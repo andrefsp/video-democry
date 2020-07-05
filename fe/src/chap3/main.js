@@ -42,11 +42,6 @@ async function start() {
   myConnection = new RTCPeerConnection(conf);
   theirConnection = new RTCPeerConnection(conf);
 
-
-  theirConnection.ontrack = function (event) {
-    theirVideo.srcObject = event.streams[0];
-  }
-
   // 2.1 Setup ICE handling 
   myConnection.onicecandidate = async function (event) { 
     if (!event.candidate) {
@@ -67,10 +62,15 @@ async function start() {
       await myConnection.addIceCandidate(new RTCIceCandidate(event.candidate));
     } catch (e) {
       console.log("Error adding ice candidate");
+      return
     }
   }
 
   stream.getTracks().forEach( track => myConnection.addTrack(track, stream));
+
+  theirConnection.ontrack = function (event) {
+    assignStream(theirVideo, event.streams[0])
+  }
 
   // 2.2 Create offers
   let offer;
@@ -81,8 +81,8 @@ async function start() {
     })
   } catch (err) {
     console.log("error on offer ::", err);
+    return
   }
-
   
   await myConnection.setLocalDescription(offer);
   await theirConnection.setRemoteDescription(offer);
@@ -92,6 +92,7 @@ async function start() {
     answer = await theirConnection.createAnswer();
   } catch (err) {
     console.log("error on answer::", err);
+    return
   }
   
   await theirConnection.setLocalDescription(answer);

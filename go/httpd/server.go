@@ -34,6 +34,7 @@ type server struct {
 
 func (s *server) HttpHandler() http.Handler {
 	s.handler.HandleFunc("/chap2/endpoint", cors(s.chap2))
+	s.handler.HandleFunc("/chap3/endpoint", cors(s.chap3))
 	return s.handler
 }
 
