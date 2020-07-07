@@ -11,6 +11,6 @@ func main() {
 
 	s := httpd.NewServer()
 
-	log.Println("serving...")
+	log.Println("serving on 8081...")
 	log.Fatal(http.ListenAndServe(":8081", s.HttpHandler()))
 }
