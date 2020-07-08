@@ -2,7 +2,6 @@ package httpd
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -15,60 +14,184 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// messages
+type InfoMessage struct {
+	Uri     string `json:"uri"`
+	Message string `json:"message"`
+}
+
 type message struct {
 	Uri string `json:"uri"`
 }
 
-type joinMessage struct {
-	Participant *participant `json:"participant"`
+type InICECandidate struct {
+	User      *user       `json:"user"`
+	Candidate interface{} `json:"candidate"`
 }
 
-type participant struct {
+type InOffer struct {
+	User  *user       `json:"user"`
+	Offer interface{} `json:"offer"`
+}
+
+type OutOffer struct {
+	Uri   string      `json:"uri"`
+	User  *user       `json:"user"`
+	Offer interface{} `json:"offer"`
+}
+
+type InAnswer struct {
+	User   *user       `json:"user"`
+	Answer interface{} `json:"answer"`
+}
+
+type OutAnswer struct {
+	Uri    string      `json:"uri"`
+	User   *user       `json:"user"`
+	Answer interface{} `json:"answer"`
+}
+
+type InUserJoinMessage struct {
+	User *user `json:"user"`
+}
+
+type OutRoomEventMessage struct {
+	Uri   string  `json:"uri"`
+	User  *user   `json:"user"`
+	Users []*user `json:"room_users"`
+}
+
+type OutICECandidate struct {
+	Uri       string      `json:"uri"`
+	User      *user       `json:"user"`
+	Candidate interface{} `json:"candidate"`
+}
+
+// models
+type user struct {
 	Username string `json:"username"`
 }
 
 type room struct {
-	participants map[*websocket.Conn]*participant
+	users map[*websocket.Conn]*user
 }
 
-func (r *room) getParticipantList() []*participant {
-	participants := []*participant{}
-	for p := range r.participants {
-		participants = append(participants, r.participants[p])
+func (r *room) getUserList() []*user {
+	users := []*user{}
+	for p := range r.users {
+		users = append(users, r.users[p])
 	}
-	return participants
+	return users
 }
 
 var rooms = map[string]*room{}
 
-func (s *server) showParticipants() {
-	roomParticipats := map[string][]*participant{}
-	for roomID, room := range rooms {
-		roomParticipats[roomID] = room.getParticipantList()
-	}
-	fmt.Println(roomParticipats)
-}
-
-func (s *server) handleUserJoined(r *room, conn *websocket.Conn, messagePayload []byte) error {
-	uj := joinMessage{}
-	if err := json.Unmarshal(messagePayload, &uj); err != nil {
-		return err
-	}
-
-	r.participants[conn] = uj.Participant
-	s.pushParticipants(r)
-	return nil
-}
-
-func (s *server) pushParticipants(r *room) error {
-	// send current users on the call
-	jData, err := json.Marshal(r.getParticipantList())
+func (s *server) sendMessage(conn *websocket.Conn, payload interface{}) error {
+	jData, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
+	return conn.WriteMessage(websocket.TextMessage, jData)
+}
 
-	for conn := range r.participants {
-		if err := conn.WriteMessage(websocket.TextMessage, jData); err != nil {
+func (s *server) handleUserJoined(r *room, conn *websocket.Conn, messagePayload []byte) error {
+	uj := InUserJoinMessage{}
+	if err := json.Unmarshal(messagePayload, &uj); err != nil {
+		return err
+	}
+	if _, ok := r.users[conn]; ok {
+		s.sendMessage(conn, &InfoMessage{Uri: "out/info", Message: "User already joined"})
+		return nil
+	}
+	r.users[conn] = uj.User
+	s.pushRoomStatus(r, uj.User, "out/user-join")
+	return nil
+}
+
+func (s *server) handleICECandidate(r *room, conn *websocket.Conn, messagePayload []byte) error {
+	cm := InICECandidate{}
+	if err := json.Unmarshal(messagePayload, &cm); err != nil {
+		return err
+	}
+
+	for conn, user := range r.users {
+		if user.Username == cm.User.Username {
+			// ICE candidates are not pushed to the same connection
+			continue
+		}
+		err := s.sendMessage(conn, &OutICECandidate{
+			Uri:       "out/icecandidate",
+			User:      cm.User,
+			Candidate: cm.Candidate,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *server) handleOffer(r *room, conn *websocket.Conn, messagePayload []byte) error {
+	om := InOffer{}
+	if err := json.Unmarshal(messagePayload, &om); err != nil {
+		return err
+	}
+
+	for conn, user := range r.users {
+		if user.Username == om.User.Username {
+			// ICE candidates are not pushed to the same connection
+			continue
+		}
+		err := s.sendMessage(conn, &OutOffer{
+			Uri:   "out/offer",
+			User:  om.User,
+			Offer: om.Offer,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *server) handleAnswer(r *room, conn *websocket.Conn, messagePayload []byte) error {
+	am := InAnswer{}
+
+	if err := json.Unmarshal(messagePayload, &am); err != nil {
+		return err
+	}
+
+	for conn, user := range r.users {
+		if user.Username == am.User.Username {
+			// ICE candidates are not pushed to the same connection
+			continue
+		}
+		err := s.sendMessage(conn, &OutAnswer{
+			Uri:    "out/answer",
+			User:   am.User,
+			Answer: am.Answer,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *server) pushRoomStatus(r *room, u *user, uri string) error {
+	// send current users on the call
+
+	payload := &OutRoomEventMessage{
+		Uri:   uri,
+		User:  u,
+		Users: r.getUserList(),
+	}
+
+	for conn := range r.users {
+		if err := s.sendMessage(conn, payload); err != nil {
 			log.Println("write err:", err)
 			return err
 		}
@@ -82,17 +205,18 @@ func (s *server) handleConnection(roomID string, conn *websocket.Conn) {
 	if !ok {
 		log.Printf("Created room %s \n", roomID)
 		r = &room{
-			participants: map[*websocket.Conn]*participant{},
+			users: map[*websocket.Conn]*user{},
 		}
 		rooms[roomID] = r
 	}
 
 	defer func(c *websocket.Conn, rr *room) {
 		log.Printf("Connection went away %s \n")
-		delete(r.participants, c)
+		u := r.users[c]
+		delete(r.users, c)
 		c.Close()
 
-		s.pushParticipants(rr)
+		s.pushRoomStatus(rr, u, "out/user-left")
 	}(conn, r)
 
 	for {
@@ -109,9 +233,19 @@ func (s *server) handleConnection(roomID string, conn *websocket.Conn) {
 		}
 
 		switch m.Uri {
-		case "join":
+		case "in/join":
 			s.handleUserJoined(r, conn, messagePayload)
+		case "in/icecandidate":
+			s.handleICECandidate(r, conn, messagePayload)
+		case "in/offer":
+			s.handleOffer(r, conn, messagePayload)
+		case "in/answer":
+			s.handleAnswer(r, conn, messagePayload)
 		default:
+			s.sendMessage(conn, &InfoMessage{
+				Uri: "out/error", Message: "Message uri not recognized",
+			})
+
 			log.Println("No handler for message type: ", m.Uri)
 		}
 
