@@ -70,6 +70,7 @@ type OutICECandidate struct {
 // models
 type user struct {
 	Username string `json:"username"`
+	StreamID string `json:"stream_id"`
 }
 
 type room struct {
