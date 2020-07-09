@@ -20,7 +20,6 @@ var rtcConf = {
 let myConnection;
 let ws;
 let stream;
-
 let roomUsers;
 
 async function getMedia(constraints) {
@@ -50,6 +49,12 @@ async function assignStream(videoElement, astream) {
   return null
 }
 
+async function destroyConnection() {
+  await myConnection.close();
+  await assignStream(myConnection, null);
+  myConnection.onicecandidate = null;
+  myConnection.ontrack = null;
+}
 
 async function setupConnection() {
   if (!RTCPeerConnection) {
@@ -136,7 +141,7 @@ async function handleICECandidate(payload) {
 }
 
 async function handleAnswer(payload) {
-  await myConnection.setRemoteDescription(payload.answer);
+  await myConnection.setRemoteDescription(new RTCSessionDescription(payload.answer));
 }
 
 async function sendAnswer() {
@@ -160,7 +165,7 @@ async function sendAnswer() {
 
 async function handleOffer(payload) {
   // XXX(): Create an 'answer' button
-  await myConnection.setRemoteDescription(payload.offer);
+  await myConnection.setRemoteDescription(new RTCSessionDescription(payload.offer));
   console.log("Auto accepting offer"); 
   await sendAnswer()
 }
@@ -185,14 +190,6 @@ async function sendOffer(e) {
   }));
 
 } 
-
-async function handleTrack(payload) {
-  console.log("Handling track:: ", payload);
-  var userVideo = document.getElementById("video-" + payload.user.username);
-  userVideo.srcObject = new MediaStream(payload.streams[0]);
-
-  //assignStream(userVideo, payload.streams[0]);
-}
 
 async function start() { 
 
@@ -219,8 +216,6 @@ async function start() {
         return await handleOffer(payload)
       case "out/answer":
         return await handleAnswer(payload)
-      case "out/track":
-        return await handleTrack(payload)
       default:
         console.log("No handler for payload: ", payload)
     } 
