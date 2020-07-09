@@ -6,21 +6,20 @@ const callButton = document.querySelector('#call');
 
 const others = document.querySelector('#others'); 
 
-var userinput = document.querySelector('#username');
-userinput.value = "user" + (Math.random() * 10);
-
-var user = {
-  username: userinput.value,
-}
-
 var rtcConf = {
-  iceServers: [{urls: "stun:stun.1.google.com:19302"}]
+  iceServers: [
+    {
+      urls: "stun:stun.1.google.com:19302"
+    }
+  ]
 }; 
 
 let myConnection;
 let ws;
 let stream;
 let roomUsers;
+
+let user;
 
 async function getMedia(constraints) {
   let rstream = null;
@@ -63,9 +62,6 @@ async function setupConnection() {
   }
   myConnection = new RTCPeerConnection(rtcConf);
 
-  stream = await getMedia({ video: true, audio: false });
-  await assignStream(myVideo, stream)
-
   myConnection.onicecandidate = async function (event) {
     if (!event.candidate) {
       return 
@@ -76,8 +72,7 @@ async function setupConnection() {
       candidate: event.candidate,
     }));
   }
-
-  stream.getTracks().forEach( track => myConnection.addTrack(track, stream));
+  
   myConnection.ontrack = async function (event) {
 
     let streamToUserMap = roomUsers.reduce((m, u) => {
@@ -87,12 +82,20 @@ async function setupConnection() {
 
     var targetUser = streamToUserMap[event.streams[0].id];
     var targetVideo = document.getElementById("video-" + targetUser.username);
-    
-   
+     
     await assignStream(targetVideo, event.streams[0]);
   }
 
-  user.stream_id = stream.id;
+
+  stream = await getMedia({ video: true, audio: false });
+  await assignStream(myVideo, stream)
+
+  stream.getTracks().forEach( track => myConnection.addTrack(track, stream));
+
+  user = {
+    stream_id: stream.id,
+    username: "user" + (Math.random() * 10),
+  }
 
 }
 
@@ -164,10 +167,10 @@ async function sendAnswer() {
 }
 
 async function handleOffer(payload) {
-  // XXX(): Create an 'answer' button
+  // XXX(): Create an 'answer' button. Currently auto accepting request
   await myConnection.setRemoteDescription(new RTCSessionDescription(payload.offer));
-  console.log("Auto accepting offer"); 
-  await sendAnswer()
+  
+  await sendAnswer();
 }
 
 async function sendOffer(e) {
@@ -194,6 +197,9 @@ async function sendOffer(e) {
 async function start() { 
 
   await setupConnection();
+  
+  var userP = document.getElementById("yoursp");
+  userP.innerHTML = `me ( ${user.username} )`;
 
   ws = new WebSocket('ws://localhost:8081/chap4/endpoint?room='+roomID)
   ws.onopen = async function(event) {
