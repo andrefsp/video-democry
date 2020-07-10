@@ -147,7 +147,7 @@ async function handleAnswer(payload) {
   await myConnection.setRemoteDescription(new RTCSessionDescription(payload.answer));
 }
 
-async function sendAnswer() {
+async function sendAnswerTo(destUser) {
  
   let answer; 
   try {
@@ -163,6 +163,7 @@ async function sendAnswer() {
     uri: "in/answer",
     user: user,
     answer: answer,
+    dest_user: destUser,
   }));
 }
 
@@ -170,7 +171,7 @@ async function handleOffer(payload) {
   // XXX(): Create an 'answer' button. Currently auto accepting request
   await myConnection.setRemoteDescription(new RTCSessionDescription(payload.offer));
   
-  await sendAnswer();
+  await sendAnswerTo(payload.user);
 }
 
 async function sendOffer(e) {

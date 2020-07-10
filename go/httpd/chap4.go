@@ -41,8 +41,9 @@ type OutOffer struct {
 }
 
 type InAnswer struct {
-	User   *user       `json:"user"`
-	Answer interface{} `json:"answer"`
+	User     *user       `json:"user"`
+	DestUser *user       `json:"dest_user"`
+	Answer   interface{} `json:"answer"`
 }
 
 type OutAnswer struct {
@@ -159,13 +160,13 @@ func (s *server) handleOffer(r *room, conn *websocket.Conn, messagePayload []byt
 
 func (s *server) handleAnswer(r *room, conn *websocket.Conn, messagePayload []byte) error {
 	am := InAnswer{}
-
 	if err := json.Unmarshal(messagePayload, &am); err != nil {
 		return err
 	}
 
+	// Answer is only sent to one unique user
 	for conn, user := range r.users {
-		if user.Username == am.User.Username {
+		if user.Username != am.DestUser.Username {
 			// ICE candidates are not pushed to the same connection
 			continue
 		}
@@ -177,6 +178,7 @@ func (s *server) handleAnswer(r *room, conn *websocket.Conn, messagePayload []by
 		if err != nil {
 			return err
 		}
+		break
 	}
 
 	return nil
@@ -200,6 +202,18 @@ func (s *server) pushRoomStatus(r *room, u *user, uri string) error {
 	return nil
 }
 
+func (s *server) handleDisconnection(r *room, conn *websocket.Conn) {
+	defer conn.Close()
+	log.Printf("Connection went away %s \n")
+
+	u, ok := r.users[conn]
+	if !ok {
+		return
+	}
+	delete(r.users, conn)
+	s.pushRoomStatus(r, u, "out/user-left")
+}
+
 func (s *server) handleConnection(roomID string, conn *websocket.Conn) {
 	var r *room
 	r, ok := rooms[roomID]
@@ -211,26 +225,18 @@ func (s *server) handleConnection(roomID string, conn *websocket.Conn) {
 		rooms[roomID] = r
 	}
 
-	defer func(c *websocket.Conn, rr *room) {
-		log.Printf("Connection went away %s \n")
-		u := r.users[c]
-		delete(r.users, c)
-		c.Close()
-
-		s.pushRoomStatus(rr, u, "out/user-left")
-	}(conn, r)
-
 	for {
 		_, messagePayload, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("read err:", err)
+			s.handleDisconnection(r, conn)
 			break
 		}
 
 		m := message{}
 		if err := json.Unmarshal(messagePayload, &m); err != nil {
 			log.Println("read err:", err)
-			break
+			continue
 		}
 
 		switch m.Uri {
