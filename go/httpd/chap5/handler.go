@@ -26,31 +26,42 @@ type message struct {
 }
 
 type InICECandidate struct {
-	User      *user       `json:"user"`
+	FromUser  *user       `json:"from_user"`
+	ToUser    *user       `json:"to_user"`
+	Candidate interface{} `json:"candidate"`
+}
+
+type OutICECandidate struct {
+	Uri       string      `json:"uri"`
+	FromUser  *user       `json:"from_user"`
+	ToUser    *user       `json:"to_user"`
 	Candidate interface{} `json:"candidate"`
 }
 
 type InOffer struct {
-	User  *user       `json:"user"`
-	Offer interface{} `json:"offer"`
+	FromUser *user       `json:"from_user"`
+	ToUser   *user       `json:"to_user"`
+	Offer    interface{} `json:"offer"`
 }
 
 type OutOffer struct {
-	Uri   string      `json:"uri"`
-	User  *user       `json:"user"`
-	Offer interface{} `json:"offer"`
+	Uri      string      `json:"uri"`
+	FromUser *user       `json:"from_user"`
+	ToUser   *user       `json:"to_user"`
+	Offer    interface{} `json:"offer"`
 }
 
 type InAnswer struct {
-	User     *user       `json:"user"`
-	DestUser *user       `json:"dest_user"`
+	FromUser *user       `json:"from_user"`
+	ToUser   *user       `json:"to_user"`
 	Answer   interface{} `json:"answer"`
 }
 
 type OutAnswer struct {
-	Uri    string      `json:"uri"`
-	User   *user       `json:"user"`
-	Answer interface{} `json:"answer"`
+	Uri      string      `json:"uri"`
+	FromUser *user       `json:"from_user"`
+	ToUser   *user       `json:"to_user"`
+	Answer   interface{} `json:"answer"`
 }
 
 type InUserJoinMessage struct {
@@ -61,12 +72,6 @@ type OutRoomEventMessage struct {
 	Uri   string  `json:"uri"`
 	User  *user   `json:"user"`
 	Users []*user `json:"room_users"`
-}
-
-type OutICECandidate struct {
-	Uri       string      `json:"uri"`
-	User      *user       `json:"user"`
-	Candidate interface{} `json:"candidate"`
 }
 
 // models
@@ -118,15 +123,15 @@ func (s *chap5Handler) handleICECandidate(r *room, conn *websocket.Conn, message
 	if err := json.Unmarshal(messagePayload, &cm); err != nil {
 		return err
 	}
-
 	for conn, user := range r.users {
-		if user.Username == cm.User.Username {
+		if user.Username != cm.ToUser.Username {
 			// ICE candidates are not pushed to the same connection
 			continue
 		}
 		err := s.sendMessage(conn, &OutICECandidate{
 			Uri:       "out/icecandidate",
-			User:      cm.User,
+			ToUser:    cm.ToUser,
+			FromUser:  cm.FromUser,
 			Candidate: cm.Candidate,
 		})
 		if err != nil {
@@ -144,14 +149,15 @@ func (s *chap5Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 	}
 
 	for conn, user := range r.users {
-		if user.Username == om.User.Username {
+		if user.Username != om.ToUser.Username {
 			// ICE candidates are not pushed to the same connection
 			continue
 		}
 		err := s.sendMessage(conn, &OutOffer{
-			Uri:   "out/offer",
-			User:  om.User,
-			Offer: om.Offer,
+			Uri:      "out/offer",
+			ToUser:   om.ToUser,
+			FromUser: om.FromUser,
+			Offer:    om.Offer,
 		})
 		if err != nil {
 			return err
@@ -169,14 +175,15 @@ func (s *chap5Handler) handleAnswer(r *room, conn *websocket.Conn, messagePayloa
 
 	// Answer is only sent to one unique user
 	for conn, user := range r.users {
-		if user.Username != am.DestUser.Username {
+		if user.Username != am.ToUser.Username {
 			// ICE candidates are not pushed to the same connection
 			continue
 		}
 		err := s.sendMessage(conn, &OutAnswer{
-			Uri:    "out/answer",
-			User:   am.User,
-			Answer: am.Answer,
+			Uri:      "out/answer",
+			ToUser:   am.ToUser,
+			FromUser: am.FromUser,
+			Answer:   am.Answer,
 		})
 		if err != nil {
 			return err
