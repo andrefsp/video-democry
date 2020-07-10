@@ -1,4 +1,4 @@
-package httpd
+package chap2
 
 import (
 	"encoding/base64"
@@ -9,14 +9,18 @@ import (
 	"os"
 	"path"
 	"strings"
+
+	"github.com/andrefsp/video-democry/go/httpd/responses"
 )
 
-func (s *server) chap2(w http.ResponseWriter, r *http.Request) {
+type chap2Handler struct{}
+
+func (s *chap2Handler) Handler(w http.ResponseWriter, r *http.Request) {
 	uploadPath := path.Join("/tmp", "democry", "chap2")
 
 	if err := os.MkdirAll(uploadPath, 0766); err != nil {
 		log.Println("Error: ", err.Error())
-		response(w, http.StatusBadRequest, map[string]string{
+		responses.Send(w, http.StatusBadRequest, map[string]string{
 			"message": err.Error(),
 		})
 		return
@@ -28,7 +32,7 @@ func (s *server) chap2(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		log.Println("Error: ", err.Error())
-		response(w, http.StatusBadRequest, map[string]string{
+		responses.Send(w, http.StatusBadRequest, map[string]string{
 			"message": err.Error(),
 		})
 		return
@@ -38,7 +42,7 @@ func (s *server) chap2(w http.ResponseWriter, r *http.Request) {
 	decoded, err := base64.StdEncoding.DecodeString(strings.Split(payload.Content, ",")[1])
 	if err != nil {
 		log.Println("Error: ", err.Error())
-		response(w, http.StatusBadRequest, map[string]string{
+		responses.Send(w, http.StatusBadRequest, map[string]string{
 			"message": err.Error(),
 		})
 		return
@@ -48,7 +52,7 @@ func (s *server) chap2(w http.ResponseWriter, r *http.Request) {
 	tempFile, err := ioutil.TempFile(uploadPath, "upload-*.png")
 	if err != nil {
 		log.Println("Error: ", err.Error())
-		response(w, http.StatusBadRequest, map[string]string{
+		responses.Send(w, http.StatusBadRequest, map[string]string{
 			"message": err.Error(),
 		})
 		return
@@ -58,7 +62,11 @@ func (s *server) chap2(w http.ResponseWriter, r *http.Request) {
 	// write this byte array to our temporary file
 	tempFile.Write(decoded)
 
-	response(w, http.StatusOK, map[string]string{
+	responses.Send(w, http.StatusOK, map[string]string{
 		"message": "success",
 	})
+}
+
+func New() *chap2Handler {
+	return &chap2Handler{}
 }

@@ -1,10 +1,11 @@
-package httpd
+package chap4
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
 
+	"github.com/andrefsp/video-democry/go/httpd/responses"
 	"github.com/gorilla/websocket"
 )
 
@@ -88,7 +89,9 @@ func (r *room) getUserList() []*user {
 
 var rooms = map[string]*room{}
 
-func (s *server) sendMessage(conn *websocket.Conn, payload interface{}) error {
+type chap4Handler struct{}
+
+func (s *chap4Handler) sendMessage(conn *websocket.Conn, payload interface{}) error {
 	jData, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -96,7 +99,7 @@ func (s *server) sendMessage(conn *websocket.Conn, payload interface{}) error {
 	return conn.WriteMessage(websocket.TextMessage, jData)
 }
 
-func (s *server) handleUserJoined(r *room, conn *websocket.Conn, messagePayload []byte) error {
+func (s *chap4Handler) handleUserJoined(r *room, conn *websocket.Conn, messagePayload []byte) error {
 	uj := InUserJoinMessage{}
 	if err := json.Unmarshal(messagePayload, &uj); err != nil {
 		return err
@@ -110,7 +113,7 @@ func (s *server) handleUserJoined(r *room, conn *websocket.Conn, messagePayload 
 	return nil
 }
 
-func (s *server) handleICECandidate(r *room, conn *websocket.Conn, messagePayload []byte) error {
+func (s *chap4Handler) handleICECandidate(r *room, conn *websocket.Conn, messagePayload []byte) error {
 	cm := InICECandidate{}
 	if err := json.Unmarshal(messagePayload, &cm); err != nil {
 		return err
@@ -134,7 +137,7 @@ func (s *server) handleICECandidate(r *room, conn *websocket.Conn, messagePayloa
 	return nil
 }
 
-func (s *server) handleOffer(r *room, conn *websocket.Conn, messagePayload []byte) error {
+func (s *chap4Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload []byte) error {
 	om := InOffer{}
 	if err := json.Unmarshal(messagePayload, &om); err != nil {
 		return err
@@ -158,7 +161,7 @@ func (s *server) handleOffer(r *room, conn *websocket.Conn, messagePayload []byt
 	return nil
 }
 
-func (s *server) handleAnswer(r *room, conn *websocket.Conn, messagePayload []byte) error {
+func (s *chap4Handler) handleAnswer(r *room, conn *websocket.Conn, messagePayload []byte) error {
 	am := InAnswer{}
 	if err := json.Unmarshal(messagePayload, &am); err != nil {
 		return err
@@ -184,7 +187,7 @@ func (s *server) handleAnswer(r *room, conn *websocket.Conn, messagePayload []by
 	return nil
 }
 
-func (s *server) pushRoomStatus(r *room, u *user, uri string) error {
+func (s *chap4Handler) pushRoomStatus(r *room, u *user, uri string) error {
 	// send current users on the call
 
 	payload := &OutRoomEventMessage{
@@ -202,7 +205,7 @@ func (s *server) pushRoomStatus(r *room, u *user, uri string) error {
 	return nil
 }
 
-func (s *server) handleDisconnection(r *room, conn *websocket.Conn) {
+func (s *chap4Handler) handleDisconnection(r *room, conn *websocket.Conn) {
 	defer conn.Close()
 	log.Printf("Connection went away %s \n")
 
@@ -214,7 +217,7 @@ func (s *server) handleDisconnection(r *room, conn *websocket.Conn) {
 	s.pushRoomStatus(r, u, "out/user-left")
 }
 
-func (s *server) handleConnection(roomID string, conn *websocket.Conn) {
+func (s *chap4Handler) handleConnection(roomID string, conn *websocket.Conn) {
 	var r *room
 	r, ok := rooms[roomID]
 	if !ok {
@@ -259,19 +262,23 @@ func (s *server) handleConnection(roomID string, conn *websocket.Conn) {
 	}
 }
 
-func (s *server) chap4(w http.ResponseWriter, r *http.Request) {
+func (s *chap4Handler) Handler(w http.ResponseWriter, r *http.Request) {
 	roomID := r.URL.Query().Get("room")
 	if roomID == "" {
-		response(w, http.StatusBadRequest, newError("room not present on request"))
+		responses.Send(w, http.StatusBadRequest, responses.NewError("room not present on request"))
 		return
 	}
 
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("upgrade:", err)
-		response(w, http.StatusBadRequest, newError(err.Error()))
+		responses.Send(w, http.StatusBadRequest, responses.NewError(err.Error()))
 		return
 	}
 
 	go s.handleConnection(roomID, c)
+}
+
+func New() *chap4Handler {
+	return &chap4Handler{}
 }

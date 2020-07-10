@@ -1,30 +1,12 @@
 package httpd
 
 import (
-	"encoding/json"
 	"net/http"
+
+	"github.com/andrefsp/video-democry/go/httpd/chap2"
+	"github.com/andrefsp/video-democry/go/httpd/chap3"
+	"github.com/andrefsp/video-democry/go/httpd/chap4"
 )
-
-type Error struct {
-	Message string `json:"message"`
-}
-
-func newError(message string) *Error {
-	return &Error{
-		Message: message,
-	}
-}
-
-func response(w http.ResponseWriter, responseCode int, payload interface{}) {
-	jData, err := json.Marshal(payload)
-	if err != nil {
-		return
-	}
-
-	w.WriteHeader(responseCode)
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(jData)
-}
 
 func cors(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -42,9 +24,9 @@ type server struct {
 }
 
 func (s *server) HttpHandler() http.Handler {
-	s.handler.HandleFunc("/chap2/endpoint", cors(s.chap2))
-	s.handler.HandleFunc("/chap3/endpoint", cors(s.chap3))
-	s.handler.HandleFunc("/chap4/endpoint", cors(s.chap4))
+	s.handler.HandleFunc("/chap2/endpoint", cors(chap2.New().Handler))
+	s.handler.HandleFunc("/chap3/endpoint", cors(chap3.New().Handler))
+	s.handler.HandleFunc("/chap4/endpoint", cors(chap4.New().Handler))
 	return s.handler
 }
 
