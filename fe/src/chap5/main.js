@@ -2,7 +2,8 @@ const urlParams = new URLSearchParams(window.location.search);
 const roomID = urlParams.get('room');
 
 const myVideo = document.querySelector('#yours'); 
-const callButton = document.querySelector('#call');
+const joinButton = document.querySelector('#join');
+const joinDiv = document.querySelector('#join-div');
 
 const others = document.querySelector('#others'); 
 
@@ -47,6 +48,18 @@ async function assignStream(videoElement, astream) {
     }
   }
   return null
+}
+
+async function setJoinControls(payload) {
+  if (roomUsers.length === 1) {
+    joinDiv.style.display = "none";
+    return
+  } 
+  
+  if (payload.user.username === user.username) {
+    joinDiv.style.display = "block";
+    return
+  }
 }
 
 
@@ -102,12 +115,10 @@ async function setupUserConnection(toUser) {
   
 }
 
-async function handleUserJoinEvent(payload) {
-  
+async function handleUserJoinEvent(payload) {  
   roomUsers = payload.room_users;
 
-  payload.
-    room_users.
+  roomUsers.
     filter(u => u.username != user.username).
     filter(u => !document.getElementById(u.username)).
     forEach(async (u) => {
@@ -129,6 +140,8 @@ async function handleUserJoinEvent(payload) {
       // Create RTCPeer connection for user
       roomConnections[u.username] = await setupUserConnection(u);
     });
+
+  setJoinControls(payload);
 }
 
 async function handleUserLeftEvent(payload) {
@@ -141,6 +154,8 @@ async function handleUserLeftEvent(payload) {
   roomConnections.delete(payload.user.username);
     
   roomUsers = payload.room_users;
+  
+  setJoinControls(payload);
 }
 
 async function handleICECandidate(payload) {
@@ -219,6 +234,9 @@ async function sendOffer(e) {
         offer: offer,
       }));
     }); 
+
+  // hide join button
+  joinDiv.style.display = "none";
 } 
 
 async function start() { 
@@ -255,7 +273,7 @@ async function start() {
 
   }
 
-  callButton.addEventListener('click', sendOffer);
+  joinButton.addEventListener('click', sendOffer);
 }
 
 start();

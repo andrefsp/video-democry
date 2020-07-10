@@ -27,6 +27,10 @@
             filter: sepia(1);
           }
 
+          #join-div {
+            display: none;
+          }
+
         </style>
     </head>
     <body>
@@ -35,8 +39,11 @@
       <div id="myself">
         <video id="yours" autoplay></video>
         <p id="yoursp"></p>
-        <button id="call">join</button>
+        <div id="join-div">
+          <button id="join">join</button>
+        </div>
       </div>
+
       <hr></hr>     
 
       <div id="others">
