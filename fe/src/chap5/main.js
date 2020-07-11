@@ -1,3 +1,5 @@
+import {wsURL} from '../settings.js';
+
 const urlParams = new URLSearchParams(window.location.search);
 const roomID = urlParams.get('room');
 
@@ -246,7 +248,7 @@ async function start() {
   var userP = document.getElementById("yoursp");
   userP.innerHTML = `me ( ${user.username} )`;
 
-  ws = new WebSocket('ws://localhost:8081/chap5/endpoint?room='+roomID)
+  ws = new WebSocket(`${wsURL}/chap5/endpoint?room=${roomID}`)
   ws.onopen = async function(event) {
     ws.send(JSON.stringify({
       uri: "in/join",

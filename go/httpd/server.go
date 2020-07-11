@@ -3,6 +3,8 @@ package httpd
 import (
 	"net/http"
 
+	"github.com/gorilla/mux"
+
 	"github.com/andrefsp/video-democry/go/httpd/chap2"
 	"github.com/andrefsp/video-democry/go/httpd/chap3"
 	"github.com/andrefsp/video-democry/go/httpd/chap4"
@@ -20,8 +22,16 @@ func cors(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+type Config struct {
+	StaticDir string
+	SslMode   bool
+	Hostname  string
+	Port      string
+}
+
 type server struct {
-	handler *http.ServeMux
+	handler *mux.Router
+	cfg     *Config
 }
 
 func (s *server) HttpHandler() http.Handler {
@@ -36,11 +46,21 @@ func (s *server) HttpHandler() http.Handler {
 
 	// multi user chat room
 	s.handler.HandleFunc("/chap5/endpoint", cors(chap5.New().Handler))
+
+	//
+	s.handler.HandleFunc("/s/settings.js", s.SettingsHandler)
+
+	// static files
+	s.handler.PathPrefix("/s/").Handler(
+		http.StripPrefix("/s/", http.FileServer(http.Dir(s.cfg.StaticDir))),
+	)
+
 	return s.handler
 }
 
-func NewServer() *server {
+func NewServer(cfg *Config) *server {
 	return &server{
-		handler: http.NewServeMux(),
+		handler: mux.NewRouter(),
+		cfg:     cfg,
 	}
 }
