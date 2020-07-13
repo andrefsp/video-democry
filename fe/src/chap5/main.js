@@ -12,8 +12,11 @@ const others = document.querySelector('#others');
 var rtcConf = {
   iceServers: [
     {
-      urls: "stun:stun.1.google.com:19302"
-    }
+      urls: "turn:local.democry.org:3478?protocol=udp",
+      credential: "thiskey",
+      username: "thisuser"
+    },
+
   ]
 }; 
 
@@ -71,7 +74,7 @@ async function setupLocalSession() {
     return
   }
 
-  stream = await getMedia({ video: true, audio: false });
+  stream = await getMedia({ video: true, audio: true });
   await assignStream(myVideo, stream)
 
   user = {
@@ -83,13 +86,17 @@ async function setupLocalSession() {
 
 async function setupUserConnection(toUser) {
   
-  joinUserConnection = new RTCPeerConnection(rtcConf);
+  var joinUserConnection = new RTCPeerConnection(rtcConf);
 
   joinUserConnection.onicecandidate = async function (event) {
     if (!event.candidate) {
       return 
     }
+    var ip = event.candidate.candidate.split(" ")[4];
+    
+    // console.log(event.candidate);
 
+    console.log('sending candidate', event.candidate);
     // Broadcast ICE candidates to all users 
     ws.send(JSON.stringify({
       uri: "in/icecandidate",

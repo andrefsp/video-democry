@@ -9,14 +9,26 @@ import (
 	"runtime"
 
 	"github.com/andrefsp/video-democry/go/httpd"
+	"github.com/andrefsp/video-democry/go/stunturn"
 )
 
-func relPath(parts ...string) string {
+func getPWD() string {
+	if os.Getenv("V_PATH") != "" {
+		return os.Getenv("V_PATH")
+	}
+
 	_, filename, _, ok := runtime.Caller(1)
 	if !ok {
 		panic("no runtime ok")
 	}
-	parts = append([]string{path.Dir(filename)}, parts...)
+
+	return path.Dir(filename)
+}
+
+func relPath(parts ...string) string {
+	pwd := getPWD()
+
+	parts = append([]string{pwd}, parts...)
 	return path.Join(parts...)
 }
 
@@ -39,7 +51,10 @@ var staticDir = relPath("../fe/src/")
 
 var hostname = valueOrDefault(os.Getenv("V_HOSTNAME"), "localhost")
 
+var relayAddr = valueOrDefault(os.Getenv("RELAY_ADDR"), "192.168.0.39")
+
 func main() {
+	go stunturn.Start(hostname, relayAddr)
 
 	s := httpd.NewServer(&httpd.Config{
 		StaticDir: staticDir,
