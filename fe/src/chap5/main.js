@@ -10,13 +10,13 @@ const joinDiv = document.querySelector('#join-div');
 const others = document.querySelector('#others'); 
 
 var rtcConf = {
-  iceServers: [
+  // iceTransportPolicy: 'relay',  # uncomment for relay only traffic
+  iceServers:[
     {
-      urls: "turn:local.democry.org:3478?protocol=udp",
+      urls: "turn:local.democry.org:3478",
       credential: "thiskey",
       username: "thisuser"
     },
-
   ]
 }; 
 
