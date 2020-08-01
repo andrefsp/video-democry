@@ -3,9 +3,6 @@ package stunturn
 import (
 	"log"
 	"net"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/pion/turn/v2"
 )
@@ -42,8 +39,7 @@ func Start(realm, relayAddr string) {
 		log.Panicf("Failed to create TURN server listener: %s", err)
 	}
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	sigs := make(chan struct{}, 1)
 	<-sigs
 
 	if err = s.Close(); err != nil {

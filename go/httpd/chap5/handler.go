@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/andrefsp/video-democry/go/httpd/responses"
 	"github.com/gorilla/websocket"
@@ -82,6 +83,22 @@ type user struct {
 
 type room struct {
 	users map[*websocket.Conn]*user
+
+	ticker <-chan time.Time
+	stop   <-chan struct{}
+}
+
+func (r *room) start() {
+	for {
+		select {
+		case <-r.ticker:
+			for conn := range r.users {
+				conn.WriteMessage(websocket.TextMessage, []byte(`{"uri":"out/ping"}`))
+			}
+		case <-r.stop:
+			break
+		}
+	}
 }
 
 func (r *room) getUserList() []*user {
@@ -90,6 +107,16 @@ func (r *room) getUserList() []*user {
 		users = append(users, r.users[p])
 	}
 	return users
+}
+
+func newRoom() *room {
+	r := &room{
+		users:  map[*websocket.Conn]*user{},
+		ticker: time.NewTicker(15 * time.Second).C,
+		stop:   make(<-chan struct{}, 1),
+	}
+	go r.start()
+	return r
 }
 
 var rooms = map[string]*room{}
@@ -214,7 +241,7 @@ func (s *chap5Handler) pushRoomStatus(r *room, u *user, uri string) error {
 
 func (s *chap5Handler) handleDisconnection(r *room, conn *websocket.Conn) {
 	defer conn.Close()
-	log.Printf("Connection went away %s \n")
+	log.Print("Connection went away...")
 
 	u, ok := r.users[conn]
 	if !ok {
@@ -229,9 +256,8 @@ func (s *chap5Handler) handleConnection(roomID string, conn *websocket.Conn) {
 	r, ok := rooms[roomID]
 	if !ok {
 		log.Printf("Created room %s \n", roomID)
-		r = &room{
-			users: map[*websocket.Conn]*user{},
-		}
+		r = newRoom()
+
 		rooms[roomID] = r
 	}
 
@@ -258,6 +284,7 @@ func (s *chap5Handler) handleConnection(roomID string, conn *websocket.Conn) {
 			s.handleOffer(r, conn, messagePayload)
 		case "in/answer":
 			s.handleAnswer(r, conn, messagePayload)
+		case "in/pong":
 		default:
 			s.sendMessage(conn, &InfoMessage{
 				Uri: "out/error", Message: "Message uri not recognized",

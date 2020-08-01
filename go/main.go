@@ -51,6 +51,7 @@ var staticDir = relPath("../fe/src/")
 
 var hostname = valueOrDefault(os.Getenv("V_HOSTNAME"), "localhost")
 
+// Replace it with IP address of network interface.
 var relayAddr = valueOrDefault(os.Getenv("RELAY_ADDR"), "192.168.0.39")
 
 func main() {

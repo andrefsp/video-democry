@@ -91,12 +91,8 @@ async function setupUserConnection(toUser) {
   joinUserConnection.onicecandidate = async function (event) {
     if (!event.candidate) {
       return 
-    }
-    var ip = event.candidate.candidate.split(" ")[4];
-    
-    // console.log(event.candidate);
-
-    console.log('sending candidate', event.candidate);
+    } 
+    console.log('Sending ICE candidate: ', event.candidate);
     // Broadcast ICE candidates to all users 
     ws.send(JSON.stringify({
       uri: "in/icecandidate",
@@ -137,6 +133,7 @@ async function handleUserJoinEvent(payload) {
 
       var userVideo = document.createElement("video")
       userVideo.autoplay = true
+      userVideo.controls = true
       userVideo.setAttribute("id", "video-" + u.username)
       userDiv.appendChild(userVideo);
 
@@ -170,6 +167,8 @@ async function handleUserLeftEvent(payload) {
 async function handleICECandidate(payload) {
 
   var peerConnection = roomConnections[payload.from_user.username];
+  
+  console.log('Received ICE candidate: ', payload.candidate);
 
   try {
     await peerConnection.addIceCandidate(new RTCIceCandidate(payload.candidate));
@@ -248,6 +247,12 @@ async function sendOffer(e) {
   joinDiv.style.display = "none";
 } 
 
+async function handlePing(payload) {
+  ws.send(JSON.stringify({
+      uri: "in/pong",
+  }));
+}
+
 async function start() { 
   
   await setupLocalSession();
@@ -263,6 +268,17 @@ async function start() {
     }))
   };
 
+  ws.onclose = async function(event) {
+    console.log('Connection has been closed. ', event);
+  }
+
+  ws.onerror = async function(event) {
+    console.log('An error has occured: ', event);
+
+    // try to restart the connection
+    start();
+  }
+
   ws.onmessage = async function(event) {
     let payload = JSON.parse(event.data);
     switch (payload.uri) {
@@ -276,6 +292,8 @@ async function start() {
         return await handleOffer(payload)
       case "out/answer":
         return await handleAnswer(payload)
+      case "out/ping":
+        return await handlePing(payload)
       default:
         console.log("No handler for payload: ", payload)
     } 
