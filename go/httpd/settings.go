@@ -17,5 +17,7 @@ func (s *server) SettingsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript")
 	w.Write([]byte(fmt.Sprintf(`
 		export const wsURL = "%s://%s";
-	`, wsProtocol, fullHostname)))
+
+		export const stunTurnURL = "%s";
+	`, wsProtocol, fullHostname, s.cfg.TurnServerAddr)))
 }

@@ -16,12 +16,6 @@ const credentialsSep = ":"
 // NewLongTermIntegrity returns new MessageIntegrity with key for long-term
 // credentials. Password, username, and realm must be SASL-prepared.
 func NewLongTermIntegrity(username, realm, password string) MessageIntegrity {
-	fmt.Println("---- NewLongTermIntegrity BEGIN ----")
-	fmt.Println(">> username():: ", username)
-	fmt.Println(">> realm():: ", realm)
-	fmt.Println(">> password():: ", password)
-	fmt.Println("---- NewLongTermIntegrity ENV ----")
-
 	k := strings.Join([]string{username, realm, password}, credentialsSep)
 	// #nosec
 	h := md5.New()
@@ -32,10 +26,6 @@ func NewLongTermIntegrity(username, realm, password string) MessageIntegrity {
 // NewShortTermIntegrity returns new MessageIntegrity with key for short-term
 // credentials. Password must be SASL-prepared.
 func NewShortTermIntegrity(password string) MessageIntegrity {
-	fmt.Println("----- NewShortTermIntegrity BEGIN ----")
-	fmt.Println(">> password():: ", password)
-	fmt.Println("----- NewShortTermIntegrity END ----")
-
 	return MessageIntegrity(password)
 }
 

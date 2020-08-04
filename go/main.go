@@ -8,6 +8,8 @@ import (
 	"path"
 	"runtime"
 
+	"github.com/andrefsp/video-democry/go/config"
+
 	"github.com/andrefsp/video-democry/go/httpd"
 	"github.com/andrefsp/video-democry/go/stunturn"
 )
@@ -54,14 +56,22 @@ var hostname = valueOrDefault(os.Getenv("V_HOSTNAME"), "localhost")
 // Replace it with IP address of network interface.
 var relayAddr = valueOrDefault(os.Getenv("RELAY_ADDR"), "192.168.0.39")
 
+func getStunTurnAddr() string {
+	if hostname == "localhost" {
+		return fmt.Sprintf("turn:%s:3478", relayAddr)
+	}
+	return fmt.Sprintf("turn:%s:3478", hostname)
+}
+
 func main() {
 	go stunturn.Start(hostname, relayAddr)
 
-	s := httpd.NewServer(&httpd.Config{
-		StaticDir: staticDir,
-		SslMode:   sslMode,
-		Hostname:  hostname,
-		Port:      listenPort,
+	s := httpd.NewServer(&config.Config{
+		StaticDir:      staticDir,
+		SslMode:        sslMode,
+		Hostname:       hostname,
+		Port:           listenPort,
+		TurnServerAddr: getStunTurnAddr(),
 	})
 
 	fullListenAddr := fmt.Sprintf("%s:%s", listenAddr, listenPort)

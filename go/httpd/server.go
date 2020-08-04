@@ -5,10 +5,13 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/andrefsp/video-democry/go/config"
+
 	"github.com/andrefsp/video-democry/go/httpd/chap2"
 	"github.com/andrefsp/video-democry/go/httpd/chap3"
 	"github.com/andrefsp/video-democry/go/httpd/chap4"
 	"github.com/andrefsp/video-democry/go/httpd/chap5"
+	"github.com/andrefsp/video-democry/go/httpd/chap6"
 )
 
 func cors(h http.HandlerFunc) http.HandlerFunc {
@@ -22,16 +25,9 @@ func cors(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-type Config struct {
-	StaticDir string
-	SslMode   bool
-	Hostname  string
-	Port      string
-}
-
 type server struct {
 	handler *mux.Router
-	cfg     *Config
+	cfg     *config.Config
 }
 
 func (s *server) HttpHandler() http.Handler {
@@ -47,6 +43,9 @@ func (s *server) HttpHandler() http.Handler {
 	// multi user chat room
 	s.handler.HandleFunc("/chap5/endpoint", cors(chap5.New().Handler))
 
+	// multi user chat room
+	s.handler.HandleFunc("/chap6/endpoint", cors(chap6.New(s.cfg).Handler))
+
 	//
 	s.handler.HandleFunc("/s/settings.js", s.SettingsHandler)
 
@@ -58,7 +57,7 @@ func (s *server) HttpHandler() http.Handler {
 	return s.handler
 }
 
-func NewServer(cfg *Config) *server {
+func NewServer(cfg *config.Config) *server {
 	return &server{
 		handler: mux.NewRouter(),
 		cfg:     cfg,

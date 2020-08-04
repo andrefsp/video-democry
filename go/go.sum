@@ -34,6 +34,8 @@ github.com/pion/dtls/v2 v2.0.2 h1:FHCHTiM182Y8e15aFTiORroiATUI16ryHiQh8AIOJ1E=
 github.com/pion/dtls/v2 v2.0.2/go.mod h1:27PEO3MDdaCfo21heT59/vsdmZc0zMt9wQPcSlLu/1I=
 github.com/pion/ice/v2 v2.0.0-rc.8 h1:rClk+AbvIn3hAZm0Pepf3Pc8wsGMphVp7nb9A/C9wKs=
 github.com/pion/ice/v2 v2.0.0-rc.8/go.mod h1:BH71LWfapOO69LRT1b+Rg9/be1qQPjSZT9Pm3qQRBdY=
+github.com/pion/ice/v2 v2.0.0-rc.9 h1:GPGwTQHimHneaxvbhFdJUxeaVgljP5QWp/LgQRHgtKk=
+github.com/pion/ice/v2 v2.0.0-rc.9/go.mod h1:BH71LWfapOO69LRT1b+Rg9/be1qQPjSZT9Pm3qQRBdY=
 github.com/pion/logging v0.2.2 h1:M9+AIj/+pxNsDfAT64+MAVgJO0rsyLnoJKCqf//DoeY=
 github.com/pion/logging v0.2.2/go.mod h1:k0/tDVsRCX2Mb2ZEmTqNa7CWsQPc+YYCB7Q+5pahoms=
 github.com/pion/mdns v0.0.4 h1:O4vvVqr4DGX63vzmO6Fw9vpy3lfztVWHGCQfyw0ZLSY=
@@ -73,6 +75,8 @@ github.com/pion/udp v0.1.0/go.mod h1:BPELIjbwE9PRbd/zxI/KYBnbo7B6+oA6YuEaNE8lths
 github.com/pion/webrtc v1.2.0 h1:3LGGPQEMacwG2hcDfhdvwQPz315gvjZXOfY4vaF4+I4=
 github.com/pion/webrtc/v3 v3.0.0-20200731035620-18726f3478aa h1:U1+Zgx0NYj0C0hmbMAt9LYakbyhVuip4/mxBToB/EdQ=
 github.com/pion/webrtc/v3 v3.0.0-20200731035620-18726f3478aa/go.mod h1:UK5OtW1uzHqr2ncm074lxldGDfbMJbckAXT7zqtixlQ=
+github.com/pion/webrtc/v3 v3.0.0-beta.1 h1:oTbUBmU/MBQfURvrpa7oDh9ogO0/d8QRBLTVa5D1oBE=
+github.com/pion/webrtc/v3 v3.0.0-beta.1/go.mod h1:rLW1xuTIRkYCqp8wfSYOeDilKa+R0iev1bOkR/HRZyw=
 github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=

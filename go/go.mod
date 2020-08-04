@@ -7,5 +7,5 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/pion/turn v1.4.0 // indirect
 	github.com/pion/turn/v2 v2.0.4
-	github.com/pion/webrtc/v3 v3.0.0-20200731035620-18726f3478aa // indirect
+	github.com/pion/webrtc/v3 v3.0.0-beta.1
 )
