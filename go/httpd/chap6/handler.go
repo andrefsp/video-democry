@@ -20,9 +20,11 @@ import (
 
 	"github.com/pion/webrtc/v3/pkg/media"
 	"github.com/pion/webrtc/v3/pkg/media/ivfreader"
+	"github.com/pion/webrtc/v3/pkg/media/oggreader"
 )
 
-var fileName = "/home/andrefsp/development/video-democry/src/github.com/andrefsp/video-democry/go/httpd/chap6/output.ivf"
+var videoFileName = "/home/andrefsp/development/video-democry/src/github.com/andrefsp/video-democry/go/httpd/chap6/output.ivf"
+var audioFileName = "/home/andrefsp/development/video-democry/src/github.com/andrefsp/video-democry/go/httpd/chap6/output.ogg"
 
 func getPayloadType(m webrtc.MediaEngine, codecType webrtc.RTPCodecType, codecName string) (uint8, error) {
 	for _, codec := range m.GetCodecsByKind(codecType) {
@@ -133,6 +135,58 @@ type chap6Handler struct {
 	cfg *config.Config
 }
 
+func (s *chap6Handler) sendAudio(me webrtc.MediaEngine, peerConnection *webrtc.PeerConnection, wait <-chan struct{}) error {
+
+	codec, err := getPayloadType(me, webrtc.RTPCodecTypeAudio, "opus")
+	if err != nil {
+		return err
+	}
+
+	audioTrack, err := peerConnection.NewTrack(codec, rand.Uint32(), "audio", "pion")
+	if err != nil {
+		return err
+	}
+	if _, err = peerConnection.AddTrack(audioTrack); err != nil {
+		return err
+	}
+
+	go func() {
+		file, err := os.Open(audioFileName)
+		if err != nil {
+			panic(err)
+		}
+		ogg, _, err := oggreader.NewWith(file)
+		if err != nil {
+			panic(err)
+		}
+		<-wait
+		log.Printf("sending audio.")
+		var lastGranule uint64
+		for {
+			pageData, pageHeader, err := ogg.ParseNextPage()
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				panic(err)
+			}
+
+			sampleCount := float64(pageHeader.GranulePosition - lastGranule)
+			lastGranule = pageHeader.GranulePosition
+
+			err = audioTrack.WriteSample(media.Sample{Data: pageData, Samples: uint32(sampleCount)})
+			if err != nil {
+				panic(err)
+			}
+
+			time.Sleep(time.Duration((sampleCount/48000)*1000) * time.Millisecond)
+		}
+
+	}()
+
+	return nil
+}
+
 func (s *chap6Handler) sendVideo(me webrtc.MediaEngine, peerConnection *webrtc.PeerConnection, wait <-chan struct{}) error {
 
 	codec, err := getPayloadType(me, webrtc.RTPCodecTypeVideo, "VP8")
@@ -150,7 +204,7 @@ func (s *chap6Handler) sendVideo(me webrtc.MediaEngine, peerConnection *webrtc.P
 	}
 
 	go func() {
-		file, err := os.Open(fileName)
+		file, err := os.Open(videoFileName)
 		if err != nil {
 			panic(err)
 		}
@@ -261,27 +315,30 @@ func (s *chap6Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 
 	r.users[conn].pc = pc
 
-	wait := make(chan struct{}, 1)
+	startVideo := make(chan struct{}, 1)
+	startAudio := make(chan struct{}, 1)
 
-	if err := s.sendVideo(mediaEngine, r.users[conn].pc, wait); err != nil {
+	if err := s.sendVideo(mediaEngine, r.users[conn].pc, startVideo); err != nil {
 		log.Print("Error sending video: ", err.Error())
 		return err
 	}
 
-	fmt.Println("Setting remote description!!")
+	if err := s.sendAudio(mediaEngine, r.users[conn].pc, startAudio); err != nil {
+		log.Print("Error sending video: ", err.Error())
+		return err
+	}
+
 	if err := r.users[conn].pc.SetRemoteDescription(om.Offer); err != nil {
 		log.Print("Error: ", err.Error())
 		return err
 	}
 
-	fmt.Println("Crating answer!!")
 	answer, err := r.users[conn].pc.CreateAnswer(nil)
 	if err != nil {
 		log.Print("Error: ", err.Error())
 		return err
 	}
 
-	fmt.Println("Settings local description!!")
 	if err = r.users[conn].pc.SetLocalDescription(answer); err != nil {
 		log.Print("Error: ", err.Error())
 		return err
@@ -290,7 +347,8 @@ func (s *chap6Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 	r.users[conn].pc.OnICEConnectionStateChange(func(c webrtc.ICEConnectionState) {
 		if c == webrtc.ICEConnectionStateConnected {
 			log.Println("Connected...")
-			wait <- struct{}{}
+			startVideo <- struct{}{}
+			startAudio <- struct{}{}
 		}
 	})
 

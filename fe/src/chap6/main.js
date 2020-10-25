@@ -82,11 +82,11 @@ async function setupRTCPeerConnection(settings) {
   }
 
   var rtcConf = {
-    iceTransportPolicy: 'relay',
+    //iceTransportPolicy: 'relay',
     iceServers: [
-      {
-        urls: "stun:stun.1.google.com:19302"
-      },
+      //{
+      //  urls: "stun:stun.1.google.com:19302"
+      //},
       {
         urls: `${settings.stunTurnURL}`,
         credential: "thiskey",
@@ -186,9 +186,18 @@ async function handlePing(payload) {
   }));
 }
 
+async function ping() {
+  //ws.send(JSON.stringify({
+  //  uri: 'ping',
+  //}));
+  console.log("We are here!");
+  setTimeout(ping, 1000);
+}
+
+
 async function start() {
   let settings = await import('../settings.js');
-
+  
   await setupWS(settings);
 
   rtcConnection = await setupRTCPeerConnection(settings);
@@ -197,6 +206,12 @@ async function start() {
   document.getElementById("yoursp").innerHTML = `me ( ${user.username} )`;
 
   joinButton.addEventListener('click', sendOffer);
+
+  ping();
+  console.log("!!!terminated");
 }
 
+
+
 start();
+
