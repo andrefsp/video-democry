@@ -18,9 +18,9 @@ func valueOrDefault(val, default_ string) string {
 var hostname = valueOrDefault(os.Getenv("V_HOSTNAME"), "localhost")
 
 // Replace it with IP address of network interface.
-var relayIP = valueOrDefault(os.Getenv("RELAY_ADDR"), "192.168.0.39")
+var relayIP = valueOrDefault(os.Getenv("RELAY_IP"), "192.168.0.39")
 
-var listenAddr = valueOrDefault(os.Getenv("RELAY_ADDR"), "0.0.0.0:3478")
+var listenAddr = valueOrDefault(os.Getenv("LISTEN_ADDR"), "0.0.0.0:3478")
 
 func StartStunTurn(realm, relayIP, listenAddr string) {
 
