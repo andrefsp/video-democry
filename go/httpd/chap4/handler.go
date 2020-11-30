@@ -211,7 +211,7 @@ func (s *chap4Handler) pushRoomStatus(r *room, u *user, uri string) error {
 
 func (s *chap4Handler) handleDisconnection(r *room, conn *websocket.Conn) {
 	defer conn.Close()
-	log.Printf("Connection went away %s \n")
+	log.Printf("Connection went away %+v \n", conn)
 
 	u, ok := r.users[conn]
 	if !ok {
