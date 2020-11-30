@@ -9,6 +9,8 @@ import (
 
 func Start(realm, relayAddr string) {
 
+	log.Printf("TURN running on realm '%s', with relay '%s'", realm, relayAddr)
+
 	udpListener, err := net.ListenPacket("udp4", "0.0.0.0:3478")
 	if err != nil {
 		log.Panicf("Failed to create TURN server listener: %s", err)

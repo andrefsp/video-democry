@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"github.com/andrefsp/video-democry/go/config"
+	"github.com/andrefsp/video-democry/go/netutils"
 
 	"github.com/andrefsp/video-democry/go/httpd"
 	"github.com/andrefsp/video-democry/go/stunturn"
@@ -54,7 +55,15 @@ var staticDir = relPath("../fe/src/")
 var hostname = valueOrDefault(os.Getenv("V_HOSTNAME"), "localhost")
 
 // Replace it with IP address of network interface.
-var relayAddr = valueOrDefault(os.Getenv("RELAY_ADDR"), "192.168.0.39")
+var relayAddr = valueOrDefault(os.Getenv("RELAY_ADDR"), getRelayAddr())
+
+func getRelayAddr() string {
+	addr, err := netutils.GetRelayAddr()
+	if err != nil {
+		panic(err)
+	}
+	return addr
+}
 
 func getStunTurnAddr() string {
 	if hostname == "localhost" {
