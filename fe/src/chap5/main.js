@@ -1,4 +1,4 @@
-import {wsURL} from '../settings.js';
+import {wsURL, stunTurnURL} from '../settings.js';
 
 const urlParams = new URLSearchParams(window.location.search);
 const roomID = urlParams.get('room');
@@ -13,7 +13,7 @@ var rtcConf = {
   // iceTransportPolicy: 'relay',  # uncomment for relay only traffic
   iceServers:[
     {
-      urls: "turn:v.democry.org:3478",
+      urls: `${stunTurnURL}`,
       credential: "thiskey",
       username: "thisuser"
     },
