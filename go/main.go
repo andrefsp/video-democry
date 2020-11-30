@@ -82,8 +82,8 @@ func main() {
 		log.Println("Serving over https")
 		log.Fatal(http.ListenAndServeTLS(
 			fullListenAddr,
-			relPath(sslDir, "private.crt"),
-			relPath(sslDir, "private.key"),
+			relPath(sslDir, "fullchain.pem"),
+			relPath(sslDir, "privkey.pem"),
 			s.HttpHandler(),
 		))
 	default:

@@ -13,7 +13,7 @@ var rtcConf = {
   // iceTransportPolicy: 'relay',  # uncomment for relay only traffic
   iceServers:[
     {
-      urls: "turn:local.democry.org:3478",
+      urls: "turn:v.democry.org:3478",
       credential: "thiskey",
       username: "thisuser"
     },
