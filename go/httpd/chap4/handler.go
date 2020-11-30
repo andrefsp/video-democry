@@ -5,7 +5,9 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/andrefsp/video-democry/go/config"
 	"github.com/andrefsp/video-democry/go/httpd/responses"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
@@ -89,7 +91,9 @@ func (r *room) getUserList() []*user {
 
 var rooms = map[string]*room{}
 
-type chap4Handler struct{}
+type chap4Handler struct {
+	cfg *config.Config
+}
 
 func (s *chap4Handler) sendMessage(conn *websocket.Conn, payload interface{}) error {
 	jData, err := json.Marshal(payload)
@@ -279,6 +283,12 @@ func (s *chap4Handler) Handler(w http.ResponseWriter, r *http.Request) {
 	go s.handleConnection(roomID, c)
 }
 
-func New() *chap4Handler {
-	return &chap4Handler{}
+func (s *chap4Handler) RegisterHandlers(m *mux.Router, middleware func(h http.HandlerFunc) http.HandlerFunc) {
+	m.HandleFunc("/endpoint", s.Handler)
+}
+
+func New(cfg *config.Config) *chap4Handler {
+	return &chap4Handler{
+		cfg: cfg,
+	}
 }

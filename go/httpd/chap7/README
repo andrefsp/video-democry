@@ -1,0 +1,5 @@
+wss://room/
+    * signaling
+
+GET /<room>/
+    * Config, ICE Server(STUN/TURN)

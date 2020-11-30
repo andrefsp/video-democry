@@ -12,6 +12,7 @@ import (
 	"github.com/andrefsp/video-democry/go/httpd/chap4"
 	"github.com/andrefsp/video-democry/go/httpd/chap5"
 	"github.com/andrefsp/video-democry/go/httpd/chap6"
+	"github.com/andrefsp/video-democry/go/httpd/chap7"
 )
 
 func cors(h http.HandlerFunc) http.HandlerFunc {
@@ -32,21 +33,24 @@ type server struct {
 
 func (s *server) HttpHandler() http.Handler {
 	// picture upload
-	s.handler.HandleFunc("/chap2/endpoint", cors(chap2.New().Handler))
+	chap2.New(s.cfg).RegisterHandlers(s.handler.PathPrefix("/chap2").Subrouter(), cors)
 
 	// no op
-	s.handler.HandleFunc("/chap3/endpoint", cors(chap3.New().Handler))
+	chap3.New(s.cfg).RegisterHandlers(s.handler.PathPrefix("/chap3").Subrouter(), cors)
 
 	// two user chat room
-	s.handler.HandleFunc("/chap4/endpoint", cors(chap4.New().Handler))
+	chap4.New(s.cfg).RegisterHandlers(s.handler.PathPrefix("/chap4").Subrouter(), cors)
 
 	// multi user chat room
-	s.handler.HandleFunc("/chap5/endpoint", cors(chap5.New().Handler))
+	chap5.New(s.cfg).RegisterHandlers(s.handler.PathPrefix("/chap5").Subrouter(), cors)
 
-	// multi user chat room
-	s.handler.HandleFunc("/chap6/endpoint", cors(chap6.New(s.cfg).Handler))
+	// Video streaming
+	chap6.New(s.cfg).RegisterHandlers(s.handler.PathPrefix("/chap6").Subrouter(), cors)
 
-	//
+	// Multi user chat with relay server
+	chap7.New(s.cfg).RegisterHandlers(s.handler.PathPrefix("/chap7").Subrouter(), cors)
+
+	// settings.js
 	s.handler.HandleFunc("/s/settings.js", s.SettingsHandler)
 
 	// static files

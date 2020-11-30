@@ -10,10 +10,14 @@ import (
 	"path"
 	"strings"
 
+	"github.com/andrefsp/video-democry/go/config"
 	"github.com/andrefsp/video-democry/go/httpd/responses"
+	"github.com/gorilla/mux"
 )
 
-type chap2Handler struct{}
+type chap2Handler struct {
+	cfg *config.Config
+}
 
 func (s *chap2Handler) Handler(w http.ResponseWriter, r *http.Request) {
 	uploadPath := path.Join("/tmp", "democry", "chap2")
@@ -67,6 +71,12 @@ func (s *chap2Handler) Handler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func New() *chap2Handler {
-	return &chap2Handler{}
+func (s *chap2Handler) RegisterHandlers(m *mux.Router, middleware func(h http.HandlerFunc) http.HandlerFunc) {
+	m.HandleFunc("/endpoint", s.Handler)
+}
+
+func New(cfg *config.Config) *chap2Handler {
+	return &chap2Handler{
+		cfg: cfg,
+	}
 }

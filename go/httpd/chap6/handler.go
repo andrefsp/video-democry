@@ -14,6 +14,7 @@ import (
 	"github.com/andrefsp/video-democry/go/config"
 	"github.com/andrefsp/video-democry/go/httpd/responses"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 
 	webrtc "github.com/pion/webrtc/v3"
@@ -466,6 +467,10 @@ func (s *chap6Handler) Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go s.handleConnection(roomID, c)
+}
+
+func (s *chap6Handler) RegisterHandlers(m *mux.Router, middleware func(h http.HandlerFunc) http.HandlerFunc) {
+	m.HandleFunc("/endpoint", s.Handler)
 }
 
 func New(cfg *config.Config) *chap6Handler {
