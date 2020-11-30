@@ -1,4 +1,6 @@
-import {wsURL} from '../settings.js';
+import { wsURL } from '../settings.js';
+import { newUser } from './modules/user.js';
+import { getRTCConfiguration } from './modules/ice.js';
 
 const urlParams = new URLSearchParams(window.location.search);
 const roomID = urlParams.get('room');
@@ -6,20 +8,9 @@ const roomID = urlParams.get('room');
 const myVideo = document.querySelector('#yours'); 
 const joinButton = document.querySelector('#join');
 const joinDiv = document.querySelector('#join-div');
+const others = document.querySelector('#others');
 
-const others = document.querySelector('#others'); 
-
-var rtcConf = {
-  // iceTransportPolicy: 'relay',  # uncomment for relay only traffic
-  iceServers:[
-    {
-      urls: "turn:v.democry.org:3478",
-      credential: "thiskey",
-      username: "thisuser"
-    },
-  ]
-}; 
-
+let rtcConf;                        // RTC configuration
 let user;                           // current user
 let ws;                             // websocket connection
 let stream;                         // local stream
@@ -77,15 +68,14 @@ async function setupLocalSession() {
   stream = await getMedia({ video: true, audio: true });
   await assignStream(myVideo, stream)
 
-  user = {
-    stream_id: stream.id,
-    username: "user" + (Math.random() * 10),
-  }
+  user = await newUser(stream);
 }
 
 
 async function setupUserConnection(toUser) {
-  
+  var rtcConf = getRTCConfiguration(
+    "thiskey", "thiskey", ["turn:v.democry.org:3478"]
+  );
   var joinUserConnection = new RTCPeerConnection(rtcConf);
 
   joinUserConnection.onicecandidate = async function (event) {

@@ -1,5 +1,8 @@
 DOMAIN=v.democry.org
 
+fe-install:
+	$(MAKE) install -C ./fe/
+
 build:
 	go build -o ./go/democry ./go/ 
 
