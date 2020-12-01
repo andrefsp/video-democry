@@ -1,61 +1,28 @@
-import { wsURL } from '../settings.js';
+import { wsURL , stunTurnURL } from '../settings.js';
 import { newUser } from './modules/user.js';
+import { Room } from './modules/room.js';
 import { getRTCConfiguration } from './modules/ice.js';
+import { getMedia , assignStream } from './modules/media.js';
 
-const urlParams = new URLSearchParams(window.location.search);
-const roomID = urlParams.get('room');
 
 const myVideo = document.querySelector('#yours'); 
 const joinButton = document.querySelector('#join');
 const joinDiv = document.querySelector('#join-div');
 const others = document.querySelector('#others');
 
-let rtcConf;                        // RTC configuration
+
+const urlParams = new URLSearchParams(window.location.search);
+
+let room = new Room(urlParams.get('room'));
+
 let user;                           // current user
 let ws;                             // websocket connection
 let stream;                         // local stream
+let rtcConn;
 
-let roomUsers = new Array();        // list of users
-let roomConnections = new Map();    // map username -> RTCPeerConnection
-
-
-async function getMedia(constraints) {
-  let rstream = null;
-  try {
-    rstream = await navigator.mediaDevices.getUserMedia(constraints);
-  } catch(err) {
-    return err
-  }
-  return rstream
-}
-
-async function assignStream(videoElement, astream) {
-  try {
-    videoElement.srcObject = astream;
-  } catch (err) {
-    try {
-      videoElement.src = window.webkitURL.createObjectURL(astream);
-    } catch (err) {
-      try {
-         videoElement.src = window.URL.createObjectURL(astream);
-      } catch (err) {
-        return err 
-      } 
-    }
-  }
-  return null
-}
 
 async function setJoinControls(payload) {
-  if (roomUsers.length === 1) {
-    joinDiv.style.display = "none";
-    return
-  } 
-  
-  if (payload.user.username === user.username) {
-    joinDiv.style.display = "block";
-    return
-  }
+  joinDiv.style.display = "block";
 }
 
 
@@ -64,21 +31,24 @@ async function setupLocalSession() {
     console.log("RTCPeerConnection not supported!");
     return
   }
-
+  
   stream = await getMedia({ video: true, audio: true });
   await assignStream(myVideo, stream)
 
   user = await newUser(stream);
+
+  rtcConn = await getRTCPeerConnection();
 }
 
 
-async function setupUserConnection(toUser) {
+async function getRTCPeerConnection() {
   var rtcConf = getRTCConfiguration(
-    "thiskey", "thiskey", ["turn:v.democry.org:3478"]
+    "thiskey", "thiskey", [`${stunTurnURL}`]
   );
-  var joinUserConnection = new RTCPeerConnection(rtcConf);
+  
+  let conn = new RTCPeerConnection(rtcConf);
 
-  joinUserConnection.onicecandidate = async function (event) {
+  conn.onicecandidate = function (event) {
     if (!event.candidate) {
       return 
     } 
@@ -86,156 +56,70 @@ async function setupUserConnection(toUser) {
     // Broadcast ICE candidates to all users 
     ws.send(JSON.stringify({
       uri: "in/icecandidate",
-      from_user: user,
-      to_user: toUser,
+      fromUser: user,
       candidate: event.candidate,
     }));
   }
   
-  joinUserConnection.ontrack = async function (event) {
-    let streamToUserMap = roomUsers.reduce((m, u) => {
-      m[u.stream_id] = u;
-      return m
-    }, {});
-
-    var targetUser = streamToUserMap[event.streams[0].id];
+  conn.ontrack = async function (event) {
+    var targetUser = room.streams.get(event.streams[0].id);
     var targetVideo = document.getElementById("video-" + targetUser.username);
      
     await assignStream(targetVideo, event.streams[0]);
   }
 
-  stream.getTracks().forEach( track => joinUserConnection.addTrack(track, stream));
+  stream.getTracks().forEach( track => conn.addTrack(track, stream));
 
-  return joinUserConnection
-  
+  return conn  
 }
 
-async function handleUserJoinEvent(payload) {  
-  roomUsers = payload.room_users;
-
-  roomUsers.
-    filter(u => u.username != user.username).
-    filter(u => !document.getElementById(u.username)).
-    forEach(async (u) => {
-      // Create div and video elements
-      var userDiv = document.createElement("div");
-      userDiv.setAttribute("id", u.username);
-
-      var userVideo = document.createElement("video")
-      userVideo.autoplay = true
-      userVideo.controls = true
-      userVideo.setAttribute("id", "video-" + u.username)
-      userDiv.appendChild(userVideo);
-
-      var newP = document.createElement("p");  
-      newP.innerText = u.username;
-      userDiv.appendChild(newP)
-       
-      others.appendChild(userDiv);
-
-      // Create RTCPeer connection for user
-      roomConnections[u.username] = await setupUserConnection(u);
-    });
-
-  setJoinControls(payload);
+async function handleUserJoinEvent(payload) {
+  // room.addUser(payload.user);
+  // Redraw room
+  room.addUserMulti(payload.roomUsers);
 }
 
 async function handleUserLeftEvent(payload) {
-  var userDiv = document.getElementById(payload.user.username);
-  while (userDiv.firstChild) {
-    userDiv.firstChild.remove();
-  }
-  userDiv.remove();
-  
-  roomConnections.delete(payload.user.username);
-    
-  roomUsers = payload.room_users;
-  
-  setJoinControls(payload);
+  room.removeUser(payload.user); 
 }
 
 async function handleICECandidate(payload) {
-
-  var peerConnection = roomConnections[payload.from_user.username];
-  
   console.log('Received ICE candidate: ', payload.candidate);
 
   try {
-    await peerConnection.addIceCandidate(new RTCIceCandidate(payload.candidate));
+    await rtcConn.addIceCandidate(new RTCIceCandidate(payload.candidate));
   } catch (e) {
     console.log("Error adding ice candidate");
     return
   }
-  
 }
 
 async function handleAnswer(payload) {
-  var peerConnection = roomConnections[payload.from_user.username];
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(payload.answer));
+  console.log("Received answer:: ", payload);
+  await rtcConn.setRemoteDescription(new RTCSessionDescription(payload.answer));
 }
 
-async function sendAnswer(toUser) {
-  var peerConnection = roomConnections[toUser.username];
- 
-  let answer; 
+async function sendOffer(e) { 
+  let offer;
+
   try {
-    answer = await peerConnection.createAnswer();
+    offer = await rtcConn.createOffer({
+      offerToReceiveAudio: 1,  offerToReceiveVideo: 1  
+    })
   } catch (err) {
-    console.log("error on answer::", err);
+    console.log("error on offer ::", err);
     return
   }
 
-  await peerConnection.setLocalDescription(answer);
+  await rtcConn.setLocalDescription(offer);
 
   ws.send(JSON.stringify({
-    uri: "in/answer",
-    from_user: user,
-    to_user: toUser,
-    answer: answer,
+    uri: "in/offer",
+    fromUser: user,
+    offer: offer,
   }));
-}
-
-async function handleOffer(payload) {
-  // XXX(): Create an 'answer' button. Currently auto accepting request
-  
-  console.log("Auto accepting answer");
-
-  var peerConnection = roomConnections[payload.from_user.username];
-
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(payload.offer));
-  await sendAnswer(payload.from_user);
-}
-
-async function sendOffer(e) {
-  roomUsers.
-    filter(u => u.username != user.username).
-    forEach(async (u) => {
-      
-      let peerConnection = roomConnections[u.username];
-      let offer;
-
-      try {
-        offer = await peerConnection.createOffer({
-          offerToReceiveAudio: 1,  offerToReceiveVideo: 1  
-        })
-      } catch (err) {
-        console.log("error on offer ::", err);
-        return
-      }
-
-      await peerConnection.setLocalDescription(offer);
-
-      ws.send(JSON.stringify({
-        uri: "in/offer",
-        to_user: u,
-        from_user: user,
-        offer: offer,
-      }));
-    }); 
-
-  // hide join button
-  joinDiv.style.display = "none";
 } 
+ 
 
 async function handlePing(payload) {
   ws.send(JSON.stringify({
@@ -250,7 +134,7 @@ async function start() {
   var userP = document.getElementById("yoursp");
   userP.innerHTML = `me ( ${user.username} )`;
 
-  ws = new WebSocket(`${wsURL}/chap5/endpoint?room=${roomID}`)
+  ws = new WebSocket(`${wsURL}/chap7/ws?room=${room.id}`)
   ws.onopen = async function(event) {
     ws.send(JSON.stringify({
       uri: "in/join",
@@ -263,10 +147,8 @@ async function start() {
   }
 
   ws.onerror = async function(event) {
-    console.log('An error has occured: ', event);
-
-    // try to restart the connection
-    start();
+    console.log('An error has occured: ', event); 
+    start(); // try to restart the connection
   }
 
   ws.onmessage = async function(event) {
@@ -286,11 +168,11 @@ async function start() {
         return await handlePing(payload)
       default:
         console.log("No handler for payload: ", payload)
-    } 
-
+    }
   }
 
   joinButton.addEventListener('click', sendOffer);
+  await setJoinControls()
 }
 
 start();

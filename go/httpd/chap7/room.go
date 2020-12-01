@@ -18,16 +18,33 @@ func (r *room) stop() {
 }
 
 func (r *room) start() {
-	for {
-		select {
-		case <-r.ticker:
-			for conn := range r.users {
-				conn.WriteMessage(websocket.TextMessage, []byte(`{"uri":"out/ping"}`))
+	go func() {
+		for {
+			select {
+			case <-r.ticker:
+				for conn := range r.users {
+					conn.WriteMessage(websocket.TextMessage, []byte(`{"uri":"out/ping"}`))
+				}
+			case <-r.stopChan:
+				break
 			}
-		case <-r.stopChan:
-			break
 		}
-	}
+	}()
+}
+
+func (r *room) getUser(conn *websocket.Conn) *user {
+	return r.users[conn]
+}
+
+func (r *room) addUser(conn *websocket.Conn, user *user) *user {
+	r.users[conn] = user
+	return user
+}
+
+func (r *room) removeUser(conn *websocket.Conn, user *user) *user {
+	user = r.users[conn]
+	delete(r.users, conn)
+	return user
 }
 
 func (r *room) getUserList() []*user {
@@ -44,6 +61,5 @@ func newRoom() *room {
 		ticker:   time.NewTicker(15 * time.Second).C,
 		stopChan: make(chan struct{}, 1),
 	}
-	go r.start()
 	return r
 }
