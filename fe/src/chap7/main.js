@@ -76,6 +76,7 @@ async function getRTCPeerConnection() {
 async function handleUserJoinEvent(payload) {
   // room.addUser(payload.user);
   // Redraw room
+  console.log("User join: ", payload);
   room.addUserMulti(payload.roomUsers);
 }
 
@@ -118,6 +119,7 @@ async function sendOffer(e) {
     fromUser: user,
     offer: offer,
   }));
+  console.log("Offer was sent:: ", offer);
 } 
  
 
@@ -168,6 +170,7 @@ async function start() {
         return await handlePing(payload)
       default:
         console.log("No handler for payload: ", payload)
+        return
     }
   }
 

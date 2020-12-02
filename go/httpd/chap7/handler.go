@@ -102,21 +102,31 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		return err
 	}
 
-	if err := pc.SetRemoteDescription(om.Offer); err != nil {
-		log.Print("Error: ", err.Error())
-		return err
-	}
-
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
 			return
 		}
+		log.Println("Sending ICE candidate.")
 		s.sendMessage(conn, &OutICECandidate{
 			Uri:       "out/icecandidate",
 			ToUser:    user,
 			Candidate: c.ToJSON(),
 		})
 	})
+
+	pc.OnTrack(func(t *webrtc.Track, r *webrtc.RTPReceiver) {
+		log.Printf("We got a track:: %+v", t)
+		log.Printf("We got a receiver:: %+v", r)
+
+		if _, err := pc.AddTrack(t); err != nil {
+			log.Println("Error: ", err.Error())
+		}
+	})
+
+	if err := pc.SetRemoteDescription(om.Offer); err != nil {
+		log.Print("Error: ", err.Error())
+		return err
+	}
 
 	// Answer and respond
 	answer, err := pc.CreateAnswer(nil)
@@ -129,10 +139,6 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		log.Print("Error: ", err.Error())
 		return err
 	}
-
-	pc.OnTrack(func(t *webrtc.Track, r *webrtc.RTPReceiver) {
-		log.Println("We got a track!!!")
-	})
 
 	user.pc = pc
 
