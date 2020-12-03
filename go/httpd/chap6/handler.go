@@ -2,11 +2,9 @@ package chap6
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -24,17 +22,10 @@ import (
 	"github.com/pion/webrtc/v3/pkg/media/oggreader"
 )
 
-var videoFileName = "/home/andrefsp/development/video-democry/src/github.com/andrefsp/video-democry/go/httpd/chap6/output.ivf"
-var audioFileName = "/home/andrefsp/development/video-democry/src/github.com/andrefsp/video-democry/go/httpd/chap6/output.ogg"
+var PATH = "/home/andrefsp/development/democry/video-democry/src/github.com/andrefsp/video-democry/go/httpd/chap6"
 
-func getPayloadType(m webrtc.MediaEngine, codecType webrtc.RTPCodecType, codecName string) (uint8, error) {
-	for _, codec := range m.GetCodecsByKind(codecType) {
-		if codec.Name == codecName {
-			return codec.PayloadType, nil
-		}
-	}
-	return 0, errors.New(fmt.Sprintf("Remote peer does not support %s", codecName))
-}
+var videoFileName = fmt.Sprintf("%s/output.ivf", PATH)
+var audioFileName = fmt.Sprintf("%s/output.ogg", PATH)
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -136,14 +127,9 @@ type chap6Handler struct {
 	cfg *config.Config
 }
 
-func (s *chap6Handler) sendAudio(me webrtc.MediaEngine, peerConnection *webrtc.PeerConnection, wait <-chan struct{}) error {
+func (s *chap6Handler) sendAudio(peerConnection *webrtc.PeerConnection, wait <-chan struct{}) error {
 
-	codec, err := getPayloadType(me, webrtc.RTPCodecTypeAudio, "opus")
-	if err != nil {
-		return err
-	}
-
-	audioTrack, err := peerConnection.NewTrack(codec, rand.Uint32(), "audio", "pion")
+	audioTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "audio/opus"}, "audio", "pion")
 	if err != nil {
 		return err
 	}
@@ -175,7 +161,7 @@ func (s *chap6Handler) sendAudio(me webrtc.MediaEngine, peerConnection *webrtc.P
 			sampleCount := float64(pageHeader.GranulePosition - lastGranule)
 			lastGranule = pageHeader.GranulePosition
 
-			err = audioTrack.WriteSample(media.Sample{Data: pageData, Samples: uint32(sampleCount)})
+			err = audioTrack.WriteSample(media.Sample{Data: pageData, Duration: time.Second})
 			if err != nil {
 				panic(err)
 			}
@@ -188,14 +174,9 @@ func (s *chap6Handler) sendAudio(me webrtc.MediaEngine, peerConnection *webrtc.P
 	return nil
 }
 
-func (s *chap6Handler) sendVideo(me webrtc.MediaEngine, peerConnection *webrtc.PeerConnection, wait <-chan struct{}) error {
+func (s *chap6Handler) sendVideo(peerConnection *webrtc.PeerConnection, wait <-chan struct{}) error {
 
-	codec, err := getPayloadType(me, webrtc.RTPCodecTypeVideo, "VP8")
-	if err != nil {
-		return err
-	}
-
-	track, err := peerConnection.NewTrack(codec, rand.Uint32(), "video", "pion")
+	track, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "video/vp8"}, "video", "pion")
 	if err != nil {
 		return err
 	}
@@ -232,7 +213,7 @@ func (s *chap6Handler) sendVideo(me webrtc.MediaEngine, peerConnection *webrtc.P
 
 			// The amount of samples is the difference between the last and current timestamp
 			time.Sleep(sleepTime)
-			if err = track.WriteSample(media.Sample{Data: frame, Samples: 90000}); err != nil {
+			if err = track.WriteSample(media.Sample{Data: frame, Duration: time.Second}); err != nil {
 				panic(err)
 			}
 
@@ -289,21 +270,11 @@ func (s *chap6Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		return err
 	}
 
-	mediaEngine := webrtc.MediaEngine{}
-	if err := mediaEngine.PopulateFromSDP(om.Offer); err != nil {
-		return err
-	}
-
 	pc, err := webrtc.
-		NewAPI(webrtc.WithMediaEngine(mediaEngine)).
 		NewPeerConnection(webrtc.Configuration{
-			ICETransportPolicy: webrtc.ICETransportPolicyRelay,
 			ICEServers: []webrtc.ICEServer{
 				{
-					URLs: []string{"stun:stun.l.google.com:19302"},
-				},
-				{
-					URLs:       []string{"turn:192.168.0.39:3478"},
+					URLs:       []string{s.cfg.TurnServerAddr},
 					Credential: "thiskey",
 					Username:   "thisuser",
 				},
@@ -319,12 +290,12 @@ func (s *chap6Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 	startVideo := make(chan struct{}, 1)
 	startAudio := make(chan struct{}, 1)
 
-	if err := s.sendVideo(mediaEngine, r.users[conn].pc, startVideo); err != nil {
+	if err := s.sendVideo(r.users[conn].pc, startVideo); err != nil {
 		log.Print("Error sending video: ", err.Error())
 		return err
 	}
 
-	if err := s.sendAudio(mediaEngine, r.users[conn].pc, startAudio); err != nil {
+	if err := s.sendAudio(r.users[conn].pc, startAudio); err != nil {
 		log.Print("Error sending video: ", err.Error())
 		return err
 	}

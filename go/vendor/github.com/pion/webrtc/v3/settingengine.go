@@ -3,13 +3,12 @@
 package webrtc
 
 import (
-	"errors"
 	"time"
 
 	"github.com/pion/ice/v2"
 	"github.com/pion/logging"
-	"github.com/pion/sdp/v2"
 	"github.com/pion/transport/vnet"
+	"golang.org/x/net/proxy"
 )
 
 // SettingEngine allows influencing behavior in ways that are not
@@ -33,15 +32,15 @@ type SettingEngine struct {
 		ICERelayAcceptanceMinWait *time.Duration
 	}
 	candidates struct {
-		ICELite                        bool
-		ICENetworkTypes                []NetworkType
-		InterfaceFilter                func(string) bool
-		NAT1To1IPs                     []string
-		NAT1To1IPCandidateType         ICECandidateType
-		GenerateMulticastDNSCandidates bool
-		MulticastDNSHostName           string
-		UsernameFragment               string
-		Password                       string
+		ICELite                bool
+		ICENetworkTypes        []NetworkType
+		InterfaceFilter        func(string) bool
+		NAT1To1IPs             []string
+		NAT1To1IPCandidateType ICECandidateType
+		MulticastDNSMode       ice.MulticastDNSMode
+		MulticastDNSHostName   string
+		UsernameFragment       string
+		Password               string
 	}
 	replayProtection struct {
 		DTLS  *uint
@@ -49,7 +48,6 @@ type SettingEngine struct {
 		SRTCP *uint
 	}
 	sdpMediaLevelFingerprints                 bool
-	sdpExtensions                             map[SDPSectionType][]sdp.ExtMap
 	answeringDTLSRole                         DTLSRole
 	disableCertificateFingerprintVerification bool
 	disableSRTPReplayProtection               bool
@@ -57,6 +55,7 @@ type SettingEngine struct {
 	vnet                                      *vnet.Net
 	LoggerFactory                             logging.LoggerFactory
 	iceTCPMux                                 ice.TCPMux
+	iceProxyDialer                            proxy.Dialer
 }
 
 // DetachDataChannels enables detaching data channels. When enabled
@@ -166,7 +165,7 @@ func (e *SettingEngine) SetNAT1To1IPs(ips []string, candidateType ICECandidateTy
 // 		Act as DTLS Server, wait for ClientHello
 func (e *SettingEngine) SetAnsweringDTLSRole(role DTLSRole) error {
 	if role != DTLSRoleClient && role != DTLSRoleServer {
-		return errors.New("SetAnsweringDTLSRole must DTLSRoleClient or DTLSRoleServer")
+		return errSettingEngineSetAnsweringDTLSRole
 	}
 
 	e.answeringDTLSRole = role
@@ -182,9 +181,9 @@ func (e *SettingEngine) SetVNet(vnet *vnet.Net) {
 	e.vnet = vnet
 }
 
-// GenerateMulticastDNSCandidates instructs pion/ice to generate host candidates with mDNS hostnames instead of IP Addresses
-func (e *SettingEngine) GenerateMulticastDNSCandidates(generateMulticastDNSCandidates bool) {
-	e.candidates.GenerateMulticastDNSCandidates = generateMulticastDNSCandidates
+// SetICEMulticastDNSMode controls if pion/ice queries and generates mDNS ICE Candidates
+func (e *SettingEngine) SetICEMulticastDNSMode(multicastDNSMode ice.MulticastDNSMode) {
+	e.candidates.MulticastDNSMode = multicastDNSMode
 }
 
 // SetMulticastDNSHostName sets a static HostName to be used by pion/ice instead of generating one on startup
@@ -249,64 +248,7 @@ func (e *SettingEngine) SetICETCPMux(tcpMux ice.TCPMux) {
 	e.iceTCPMux = tcpMux
 }
 
-// AddSDPExtensions adds available and offered extensions for media type.
-//
-// Ext IDs are optional and generated if you do not provide them
-// SDP answers will only include extensions supported by both sides
-func (e *SettingEngine) AddSDPExtensions(mediaType SDPSectionType, exts []sdp.ExtMap) {
-	if e.sdpExtensions == nil {
-		e.sdpExtensions = make(map[SDPSectionType][]sdp.ExtMap)
-	}
-	if _, ok := e.sdpExtensions[mediaType]; !ok {
-		e.sdpExtensions[mediaType] = []sdp.ExtMap{}
-	}
-	e.sdpExtensions[mediaType] = append(e.sdpExtensions[mediaType], exts...)
-}
-
-func (e *SettingEngine) getSDPExtensions() map[SDPSectionType][]sdp.ExtMap {
-	var lastID int
-	idMap := map[string]int{}
-
-	// Build provided ext id map
-	for _, extList := range e.sdpExtensions {
-		for _, ext := range extList {
-			if ext.Value != 0 {
-				idMap[ext.URI.String()] = ext.Value
-			}
-		}
-	}
-
-	// Find next available ID
-	nextID := func() {
-		var done bool
-		for !done {
-			lastID++
-			var found bool
-			for _, v := range idMap {
-				if lastID == v {
-					found = true
-					break
-				}
-			}
-			if !found {
-				done = true
-			}
-		}
-	}
-
-	// Assign missing IDs across all media types based on URI
-	for mType, extList := range e.sdpExtensions {
-		for i, ext := range extList {
-			if ext.Value == 0 {
-				if id, ok := idMap[ext.URI.String()]; ok {
-					e.sdpExtensions[mType][i].Value = id
-				} else {
-					nextID()
-					e.sdpExtensions[mType][i].Value = lastID
-					idMap[ext.URI.String()] = lastID
-				}
-			}
-		}
-	}
-	return e.sdpExtensions
+// SetICEProxyDialer sets the proxy dialer interface based on golang.org/x/net/proxy.
+func (e *SettingEngine) SetICEProxyDialer(d proxy.Dialer) {
+	e.iceProxyDialer = d
 }

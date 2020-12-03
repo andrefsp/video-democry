@@ -2,6 +2,7 @@ package webrtc
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/pion/webrtc/v3/pkg/rtcerr"
 )
@@ -25,7 +26,7 @@ func (op stateChangeOp) String() string {
 }
 
 // SignalingState indicates the signaling state of the offer/answer process.
-type SignalingState int
+type SignalingState int32
 
 const (
 	// SignalingStateStable indicates there is no offer/answer exchange in
@@ -103,16 +104,26 @@ func (t SignalingState) String() string {
 	}
 }
 
-func checkNextSignalingState(cur, next SignalingState, op stateChangeOp, sdpType SDPType) (SignalingState, error) {
+// Get thread safe read value
+func (t *SignalingState) Get() SignalingState {
+	return SignalingState(atomic.LoadInt32((*int32)(t)))
+}
+
+// Set thread safe write value
+func (t *SignalingState) Set(state SignalingState) {
+	atomic.StoreInt32((*int32)(t), int32(state))
+}
+
+func checkNextSignalingState(cur, next SignalingState, op stateChangeOp, sdpType SDPType) (SignalingState, error) { // nolint:gocognit
 	// Special case for rollbacks
 	if sdpType == SDPTypeRollback && cur == SignalingStateStable {
 		return cur, &rtcerr.InvalidModificationError{
-			Err: fmt.Errorf("can't rollback from stable state"),
+			Err: errSignalingStateCannotRollback,
 		}
 	}
 
 	// 4.3.1 valid state transitions
-	switch cur {
+	switch cur { // nolint:exhaustive
 	case SignalingStateStable:
 		switch op {
 		case stateChangeOpSetLocal:
@@ -128,7 +139,7 @@ func checkNextSignalingState(cur, next SignalingState, op stateChangeOp, sdpType
 		}
 	case SignalingStateHaveLocalOffer:
 		if op == stateChangeOpSetRemote {
-			switch sdpType {
+			switch sdpType { // nolint:exhaustive
 			// have-local-offer->SetRemote(answer)->stable
 			case SDPTypeAnswer:
 				if next == SignalingStateStable {
@@ -150,7 +161,7 @@ func checkNextSignalingState(cur, next SignalingState, op stateChangeOp, sdpType
 		}
 	case SignalingStateHaveRemoteOffer:
 		if op == stateChangeOpSetLocal {
-			switch sdpType {
+			switch sdpType { // nolint:exhaustive
 			// have-remote-offer->SetLocal(answer)->stable
 			case SDPTypeAnswer:
 				if next == SignalingStateStable {
@@ -171,8 +182,7 @@ func checkNextSignalingState(cur, next SignalingState, op stateChangeOp, sdpType
 			}
 		}
 	}
-
 	return cur, &rtcerr.InvalidModificationError{
-		Err: fmt.Errorf("invalid proposed signaling state transition %s->%s(%s)->%s", cur, op, sdpType, next),
+		Err: fmt.Errorf("%w: %s->%s(%s)->%s", errSignalingStateProposedTransitionInvalid, cur, op, sdpType, next),
 	}
 }

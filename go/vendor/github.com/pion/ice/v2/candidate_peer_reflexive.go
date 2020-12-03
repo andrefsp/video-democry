@@ -16,6 +16,8 @@ type CandidatePeerReflexiveConfig struct {
 	Address     string
 	Port        int
 	Component   uint16
+	Priority    uint32
+	Foundation  string
 	RelAddr     string
 	RelPort     int
 }
@@ -33,19 +35,22 @@ func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*Candidate
 	}
 
 	candidateID := config.CandidateID
+	candidateIDGenerator := newCandidateIDGenerator()
 	if candidateID == "" {
-		candidateID = globalCandidateIDGenerator.Generate()
+		candidateID = candidateIDGenerator.Generate()
 	}
 
 	return &CandidatePeerReflexive{
 		candidateBase: candidateBase{
-			id:            candidateID,
-			networkType:   networkType,
-			candidateType: CandidateTypePeerReflexive,
-			address:       config.Address,
-			port:          config.Port,
-			resolvedAddr:  createAddr(networkType, ip, config.Port),
-			component:     config.Component,
+			id:                 candidateID,
+			networkType:        networkType,
+			candidateType:      CandidateTypePeerReflexive,
+			address:            config.Address,
+			port:               config.Port,
+			resolvedAddr:       createAddr(networkType, ip, config.Port),
+			component:          config.Component,
+			foundationOverride: config.Foundation,
+			priorityOverride:   config.Priority,
 			relatedAddress: &CandidateRelatedAddress{
 				Address: config.RelAddr,
 				Port:    config.RelPort,

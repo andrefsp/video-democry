@@ -5,6 +5,7 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/pion/transport/vnet"
+	"golang.org/x/net/proxy"
 )
 
 const (
@@ -42,9 +43,9 @@ const (
 	maxBindingRequestTimeout = 4000 * time.Millisecond
 )
 
-var (
-	defaultCandidateTypes = []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
-)
+func defaultCandidateTypes() []CandidateType {
+	return []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
+}
 
 // AgentConfig collects the arguments to ice.Agent construction into
 // a single structure, for future-proofness of the interface
@@ -143,6 +144,10 @@ type AgentConfig struct {
 	// Currently only passive candidates are supported. This functionality is
 	// experimental and the API might change in the future.
 	TCPMux TCPMux
+
+	// Proxy Dialer is a dialer that should be implemented by the user based on golang.org/x/net/proxy
+	// dial interface in order to support corporate proxies
+	ProxyDialer proxy.Dialer
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset
@@ -202,7 +207,7 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 	}
 
 	if config.CandidateTypes == nil || len(config.CandidateTypes) == 0 {
-		a.candidateTypes = defaultCandidateTypes
+		a.candidateTypes = defaultCandidateTypes()
 	} else {
 		a.candidateTypes = config.CandidateTypes
 	}

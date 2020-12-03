@@ -3,7 +3,10 @@ package ice
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
 	"net"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +34,9 @@ type candidateBase struct {
 	currAgent *Agent
 	closeCh   chan struct{}
 	closedCh  chan struct{}
+
+	foundationOverride string
+	priorityOverride   uint32
 }
 
 // Done implements context.Context
@@ -63,6 +69,14 @@ func (c *candidateBase) ID() string {
 	return c.id
 }
 
+func (c *candidateBase) Foundation() string {
+	if c.foundationOverride != "" {
+		return c.foundationOverride
+	}
+
+	return fmt.Sprintf("%d", crc32.ChecksumIEEE([]byte(c.Type().String()+c.address+c.networkType.String())))
+}
+
 // Address returns Candidate Address
 func (c *candidateBase) Address() string {
 	return c.address
@@ -88,8 +102,83 @@ func (c *candidateBase) Component() uint16 {
 	return c.component
 }
 
+func (c *candidateBase) SetComponent(component uint16) {
+	c.component = component
+}
+
 // LocalPreference returns the local preference for this candidate
 func (c *candidateBase) LocalPreference() uint16 {
+	if c.NetworkType().IsTCP() {
+		// RFC 6544, section 4.2
+		//
+		// In Section 4.1.2.1 of [RFC5245], a recommended formula for UDP ICE
+		// candidate prioritization is defined.  For TCP candidates, the same
+		// formula and candidate type preferences SHOULD be used, and the
+		// RECOMMENDED type preferences for the new candidate types defined in
+		// this document (see Section 5) are 105 for NAT-assisted candidates and
+		// 75 for UDP-tunneled candidates.
+		//
+		// (...)
+		//
+		// With TCP candidates, the local preference part of the recommended
+		// priority formula is updated to also include the directionality
+		// (active, passive, or simultaneous-open) of the TCP connection.  The
+		// RECOMMENDED local preference is then defined as:
+		//
+		//     local preference = (2^13) * direction-pref + other-pref
+		//
+		// The direction-pref MUST be between 0 and 7 (both inclusive), with 7
+		// being the most preferred.  The other-pref MUST be between 0 and 8191
+		// (both inclusive), with 8191 being the most preferred.  It is
+		// RECOMMENDED that the host, UDP-tunneled, and relayed TCP candidates
+		// have the direction-pref assigned as follows: 6 for active, 4 for
+		// passive, and 2 for S-O.  For the NAT-assisted and server reflexive
+		// candidates, the RECOMMENDED values are: 6 for S-O, 4 for active, and
+		// 2 for passive.
+		//
+		// (...)
+		//
+		// If any two candidates have the same type-preference and direction-
+		// pref, they MUST have a unique other-pref.  With this specification,
+		// this usually only happens with multi-homed hosts, in which case
+		// other-pref is the preference for the particular IP address from which
+		// the candidate was obtained.  When there is only a single IP address,
+		// this value SHOULD be set to the maximum allowed value (8191).
+		var otherPref uint16 = 8191
+
+		directionPref := func() uint16 {
+			switch c.Type() {
+			case CandidateTypeHost, CandidateTypeRelay:
+				switch c.tcpType {
+				case TCPTypeActive:
+					return 6
+				case TCPTypePassive:
+					return 4
+				case TCPTypeSimultaneousOpen:
+					return 2
+				case TCPTypeUnspecified:
+					return 0
+				}
+			case CandidateTypePeerReflexive, CandidateTypeServerReflexive:
+				switch c.tcpType {
+				case TCPTypeSimultaneousOpen:
+					return 6
+				case TCPTypeActive:
+					return 4
+				case TCPTypePassive:
+					return 2
+				case TCPTypeUnspecified:
+					return 0
+				}
+			case CandidateTypeUnspecified:
+				return 0
+			}
+			return 0
+		}()
+
+		return (1<<13)*directionPref + otherPref
+	}
+
 	return defaultLocalPreference
 }
 
@@ -211,7 +300,8 @@ func (c *candidateBase) close() error {
 func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 	n, err := c.conn.WriteTo(raw, dst.addr())
 	if err != nil {
-		return n, fmt.Errorf("failed to send packet: %v", err)
+		c.agent().log.Warnf("%s: %v", errSendPacket, err)
+		return n, nil
 	}
 	c.seen(true)
 	return n, nil
@@ -219,6 +309,10 @@ func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 
 // Priority computes the priority for this ICE Candidate
 func (c *candidateBase) Priority() uint32 {
+	if c.priorityOverride != 0 {
+		return c.priorityOverride
+	}
+
 	// The local preference MUST be an integer from 0 (lowest preference) to
 	// 65535 (highest preference) inclusive.  When there is only a single IP
 	// address, this value SHOULD be set to 65535.  If there are multiple
@@ -236,6 +330,7 @@ func (c *candidateBase) Equal(other Candidate) bool {
 		c.Type() == other.Type() &&
 		c.Address() == other.Address() &&
 		c.Port() == other.Port() &&
+		c.TCPType() == other.TCPType() &&
 		c.RelatedAddress().Equal(other.RelatedAddress())
 }
 
@@ -290,4 +385,112 @@ func (c *candidateBase) agent() *Agent {
 
 func (c *candidateBase) context() context.Context {
 	return c
+}
+
+// Marshal returns the string representation of the ICECandidate
+func (c *candidateBase) Marshal() string {
+	val := fmt.Sprintf("%s %d %s %d %s %d typ %s",
+		c.Foundation(),
+		c.Component(),
+		c.NetworkType().NetworkShort(),
+		c.Priority(),
+		c.Address(),
+		c.Port(),
+		c.Type())
+
+	if c.tcpType != TCPTypeUnspecified {
+		val += fmt.Sprintf(" tcptype %s", c.tcpType.String())
+	}
+
+	if c.RelatedAddress() != nil {
+		val = fmt.Sprintf("%s raddr %s rport %d",
+			val,
+			c.RelatedAddress().Address,
+			c.RelatedAddress().Port)
+	}
+
+	return val
+}
+
+// UnmarshalCandidate creates a Candidate from its string representation
+func UnmarshalCandidate(raw string) (Candidate, error) {
+	split := strings.Fields(raw)
+	if len(split) < 8 {
+		return nil, fmt.Errorf("%w (%d)", errAttributeTooShortICECandidate, len(split))
+	}
+
+	// Foundation
+	foundation := split[0]
+
+	// Component
+	rawComponent, err := strconv.ParseUint(split[1], 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errParseComponent, err)
+	}
+	component := uint16(rawComponent)
+
+	// Protocol
+	protocol := split[2]
+
+	// Priority
+	priorityRaw, err := strconv.ParseUint(split[3], 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errParsePriority, err)
+	}
+	priority := uint32(priorityRaw)
+
+	// Address
+	address := split[4]
+
+	// Port
+	rawPort, err := strconv.ParseUint(split[5], 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errParsePort, err)
+	}
+	port := int(rawPort)
+	typ := split[7]
+
+	relatedAddress := ""
+	relatedPort := 0
+	tcpType := TCPTypeUnspecified
+
+	if len(split) > 8 {
+		split = split[8:]
+
+		if split[0] == "raddr" {
+			if len(split) < 4 {
+				return nil, fmt.Errorf("%w: incorrect length", errParseRelatedAddr)
+			}
+
+			// RelatedAddress
+			relatedAddress = split[1]
+
+			// RelatedPort
+			rawRelatedPort, parseErr := strconv.ParseUint(split[3], 10, 16)
+			if parseErr != nil {
+				return nil, fmt.Errorf("%w: %v", errParsePort, parseErr)
+			}
+			relatedPort = int(rawRelatedPort)
+		} else if split[0] == "tcptype" {
+			if len(split) < 2 {
+				return nil, fmt.Errorf("%w: incorrect length", errParseTypType)
+			}
+
+			tcpType = NewTCPType(split[1])
+		}
+	}
+
+	switch typ {
+	case "host":
+		return NewCandidateHost(&CandidateHostConfig{"", protocol, address, port, component, priority, foundation, tcpType})
+	case "srflx":
+		return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{"", protocol, address, port, component, priority, foundation, relatedAddress, relatedPort})
+	case "prflx":
+		return NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{"", protocol, address, port, component, priority, foundation, relatedAddress, relatedPort})
+	case "relay":
+		return NewCandidateRelay(&CandidateRelayConfig{"", protocol, address, port, component, priority, foundation, relatedAddress, relatedPort, nil})
+	default:
+	}
+
+	return nil, fmt.Errorf("%w (%s)", errUnknownCandidateTyp, typ)
 }

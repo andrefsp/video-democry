@@ -1,5 +1,6 @@
 package chap7
 
+/*
 import (
 	"errors"
 	"fmt"
@@ -15,3 +16,5 @@ func getPayloadType(m webrtc.MediaEngine, codecType webrtc.RTPCodecType, codecNa
 	}
 	return 0, errors.New(fmt.Sprintf("Remote peer does not support %s", codecName))
 }
+
+*/

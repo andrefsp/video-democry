@@ -14,12 +14,12 @@ import (
 // trackStreams maintains a mapping of RTP/RTCP streams to a specific track
 // a RTPReceiver may contain multiple streams if we are dealing with Multicast
 type trackStreams struct {
-	track          *Track
+	track          *TrackRemote
 	rtpReadStream  *srtp.ReadStreamSRTP
 	rtcpReadStream *srtp.ReadStreamSRTCP
 }
 
-// RTPReceiver allows an application to inspect the receipt of a Track
+// RTPReceiver allows an application to inspect the receipt of a TrackRemote
 type RTPReceiver struct {
 	kind      RTPCodecType
 	transport *DTLSTransport
@@ -36,7 +36,7 @@ type RTPReceiver struct {
 // NewRTPReceiver constructs a new RTPReceiver
 func (api *API) NewRTPReceiver(kind RTPCodecType, transport *DTLSTransport) (*RTPReceiver, error) {
 	if transport == nil {
-		return nil, fmt.Errorf("DTLSTransport must not be nil")
+		return nil, errRTPReceiverDTLSTransportNil
 	}
 
 	return &RTPReceiver{
@@ -57,8 +57,8 @@ func (r *RTPReceiver) Transport() *DTLSTransport {
 	return r.transport
 }
 
-// Track returns the RtpTransceiver track
-func (r *RTPReceiver) Track() *Track {
+// Track returns the RtpTransceiver TrackRemote
+func (r *RTPReceiver) Track() *TrackRemote {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -70,11 +70,11 @@ func (r *RTPReceiver) Track() *Track {
 
 // Tracks returns the RtpTransceiver tracks
 // A RTPReceiver to support Simulcast may now have multiple tracks
-func (r *RTPReceiver) Tracks() []*Track {
+func (r *RTPReceiver) Tracks() []*TrackRemote {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	tracks := []*Track{}
+	var tracks []*TrackRemote
 	for i := range r.tracks {
 		tracks = append(tracks, r.tracks[i].track)
 	}
@@ -87,14 +87,14 @@ func (r *RTPReceiver) Receive(parameters RTPReceiveParameters) error {
 	defer r.mu.Unlock()
 	select {
 	case <-r.received:
-		return fmt.Errorf("Receive has already been called")
+		return errRTPReceiverReceiveAlreadyCalled
 	default:
 	}
 	defer close(r.received)
 
 	if len(parameters.Encodings) == 1 && parameters.Encodings[0].SSRC != 0 {
 		t := trackStreams{
-			track: &Track{
+			track: &TrackRemote{
 				kind:     r.kind,
 				ssrc:     parameters.Encodings[0].SSRC,
 				receiver: r,
@@ -111,7 +111,7 @@ func (r *RTPReceiver) Receive(parameters RTPReceiveParameters) error {
 	} else {
 		for _, encoding := range parameters.Encodings {
 			r.tracks = append(r.tracks, trackStreams{
-				track: &Track{
+				track: &TrackRemote{
 					kind:     r.kind,
 					rid:      encoding.RID,
 					receiver: r,
@@ -133,10 +133,36 @@ func (r *RTPReceiver) Read(b []byte) (n int, err error) {
 	}
 }
 
-// ReadRTCP is a convenience method that wraps Read and unmarshals for you
+// ReadSimulcast reads incoming RTCP for this RTPReceiver for given rid
+func (r *RTPReceiver) ReadSimulcast(b []byte, rid string) (n int, err error) {
+	select {
+	case <-r.received:
+		for _, t := range r.tracks {
+			if t.track != nil && t.track.rid == rid {
+				return t.rtcpReadStream.Read(b)
+			}
+		}
+		return 0, fmt.Errorf("%w: %s", errRTPReceiverForRIDTrackStreamNotFound, rid)
+	case <-r.closed:
+		return 0, io.ErrClosedPipe
+	}
+}
+
+// ReadRTCP is a convenience method that wraps Read and unmarshal for you
 func (r *RTPReceiver) ReadRTCP() ([]rtcp.Packet, error) {
 	b := make([]byte, receiveMTU)
 	i, err := r.Read(b)
+	if err != nil {
+		return nil, err
+	}
+
+	return rtcp.Unmarshal(b[:i])
+}
+
+// ReadSimulcastRTCP is a convenience method that wraps ReadSimulcast and unmarshal for you
+func (r *RTPReceiver) ReadSimulcastRTCP(rid string) ([]rtcp.Packet, error) {
+	b := make([]byte, receiveMTU)
+	i, err := r.ReadSimulcast(b, rid)
 	if err != nil {
 		return nil, err
 	}
@@ -167,11 +193,15 @@ func (r *RTPReceiver) Stop() error {
 	select {
 	case <-r.received:
 		for i := range r.tracks {
-			if err := r.tracks[i].rtcpReadStream.Close(); err != nil {
-				return err
+			if r.tracks[i].rtcpReadStream != nil {
+				if err := r.tracks[i].rtcpReadStream.Close(); err != nil {
+					return err
+				}
 			}
-			if err := r.tracks[i].rtpReadStream.Close(); err != nil {
-				return err
+			if r.tracks[i].rtpReadStream != nil {
+				if err := r.tracks[i].rtpReadStream.Close(); err != nil {
+					return err
+				}
 			}
 		}
 	default:
@@ -181,7 +211,7 @@ func (r *RTPReceiver) Stop() error {
 	return nil
 }
 
-func (r *RTPReceiver) streamsForTrack(t *Track) *trackStreams {
+func (r *RTPReceiver) streamsForTrack(t *TrackRemote) *trackStreams {
 	for i := range r.tracks {
 		if r.tracks[i].track == t {
 			return &r.tracks[i]
@@ -191,25 +221,25 @@ func (r *RTPReceiver) streamsForTrack(t *Track) *trackStreams {
 }
 
 // readRTP should only be called by a track, this only exists so we can keep state in one place
-func (r *RTPReceiver) readRTP(b []byte, reader *Track) (n int, err error) {
+func (r *RTPReceiver) readRTP(b []byte, reader *TrackRemote) (n int, err error) {
 	<-r.received
 	if t := r.streamsForTrack(reader); t != nil {
 		return t.rtpReadStream.Read(b)
 	}
 
-	return 0, fmt.Errorf("unable to find stream for Track with SSRC(%d)", reader.SSRC())
+	return 0, fmt.Errorf("%w: %d", errRTPReceiverWithSSRCTrackStreamNotFound, reader.SSRC())
 }
 
 // receiveForRid is the sibling of Receive expect for RIDs instead of SSRCs
 // It populates all the internal state for the given RID
-func (r *RTPReceiver) receiveForRid(rid string, codec *RTPCodec, ssrc uint32) (*Track, error) {
+func (r *RTPReceiver) receiveForRid(rid string, codec RTPCodecParameters, ssrc SSRC) (*TrackRemote, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	for i := range r.tracks {
 		if r.tracks[i].track.RID() == rid {
 			r.tracks[i].track.mu.Lock()
-			r.tracks[i].track.kind = codec.Type
+			r.tracks[i].track.kind = r.kind
 			r.tracks[i].track.codec = codec
 			r.tracks[i].track.ssrc = ssrc
 			r.tracks[i].track.mu.Unlock()
@@ -224,16 +254,16 @@ func (r *RTPReceiver) receiveForRid(rid string, codec *RTPCodec, ssrc uint32) (*
 		}
 	}
 
-	return nil, fmt.Errorf("no trackStreams found for SSRC(%d)", ssrc)
+	return nil, fmt.Errorf("%w: %d", errRTPReceiverForSSRCTrackStreamNotFound, ssrc)
 }
 
-func (r *RTPReceiver) streamsForSSRC(ssrc uint32) (*srtp.ReadStreamSRTP, *srtp.ReadStreamSRTCP, error) {
+func (r *RTPReceiver) streamsForSSRC(ssrc SSRC) (*srtp.ReadStreamSRTP, *srtp.ReadStreamSRTCP, error) {
 	srtpSession, err := r.transport.getSRTPSession()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rtpReadStream, err := srtpSession.OpenReadStream(ssrc)
+	rtpReadStream, err := srtpSession.OpenReadStream(uint32(ssrc))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -243,7 +273,7 @@ func (r *RTPReceiver) streamsForSSRC(ssrc uint32) (*srtp.ReadStreamSRTP, *srtp.R
 		return nil, nil, err
 	}
 
-	rtcpReadStream, err := srtcpSession.OpenReadStream(ssrc)
+	rtcpReadStream, err := srtcpSession.OpenReadStream(uint32(ssrc))
 	if err != nil {
 		return nil, nil, err
 	}

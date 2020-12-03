@@ -25,7 +25,7 @@
 
 Pion WebRTC v3.0.0 has started! See the [release notes](https://github.com/pion/webrtc/wiki/Release-WebRTC@v3.0.0) to learn about new features and breaking changes.
 
-Until `v3.0.0` has been tagged using `v2` is suggested. The last `v2` release is [v2.2.17](https://github.com/pion/webrtc/releases/tag/v2.2.17)
+Until `v3.0.0` has been tagged using `v2` is suggested. Check the [tags](https://github.com/pion/webrtc/tags) for the latest `v2` release.
 
 [Go Modules](https://blog.golang.org/using-go-modules) are mandatory for using Pion WebRTC. So make sure you set `export GO111MODULE=on`, and explicitly specify `/v2` or `/v3` when importing.
 
@@ -53,6 +53,14 @@ Now go build something awesome! Here are some **ideas** to get your creative jui
 * Securely send data between two servers, without using pub/sub.
 * Record your webcam and do special effects server side.
 * Build a conferencing application that processes audio/video and make decisions off of it.
+
+### Want to learn more about WebRTC?
+Check out [WebRTC for the Curious](https://webrtcforthecurious.com). A book about WebRTC in depth, not just about the APIs.
+Learn the full details of ICE, SCTP, DTLS, SRTP, and how they work together to make up the WebRTC stack.
+
+This is also a great resource if you are trying to debug. Learn the tools of the trade and how to approach WebRTC issues.
+
+This book is vendor agnostic and will not have any Pion specific information.
 
 ### WebAssembly
 Pion WebRTC can be used when compiled to WebAssembly, also known as WASM. In
@@ -184,6 +192,27 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [박종훈](https://github.com/JonghunBok)
 * [Sam Lancia](https://github.com/nerd2)
 * [Henry](https://github.com/cryptix)
+* [Jeff Tchang](https://github.com/tachang)
+* [JooYoung Lim](https://github.com/DevRockstarZ)
+* [Sidney San Martín](https://github.com/s4y)
+* [soolaugust](https://github.com/soolaugust)
+* [Kuzmin Vladimir](https://github.com/tekig)
+* [Alessandro Ros](https://github.com/aler9)
+* [Thomas Miller](https://github.com/tmiv)
+* [yoko(q191201771)](https://github.com/q191201771)
+* [Joshua Obasaju](https://github.com/obasajujoshua31)
+* [Mission Liao](https://github.com/mission-liao)
+* [Hanjun Kim](https://github.com/hallazzang)
+* [ZHENK](https://github.com/scorpionknifes)
+* [Rahul Nakre](https://github.com/rahulnakre)
+* [OrlandoCo](https://github.com/OrlandoCo)
+* [Assad Obaid](https://github.com/assadobaid)
+* [Jamie Good](https://github.com/jamiegood) - *Bug fix in jsfiddle example*
+* [Artur Shellunts](https://github.com/ashellunts)
+* [Sean Knight](https://github.com/SeanKnight)
+* [o0olele](https://github.com/o0olele)
+* [Bo Shi](https://github.com/bshimc)
+* [Suzuki Takeo](https://github.com/BambooTuna)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text

@@ -4,7 +4,7 @@ package webrtc
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,10 +24,10 @@ type ICETransport struct {
 	// State ICETransportState
 	// gatheringState ICEGathererState
 
-	onConnectionStateChangeHdlr       atomic.Value // func(ICETransportState)
-	onSelectedCandidatePairChangeHdlr atomic.Value // func(*ICECandidatePair)
+	onConnectionStateChangeHandler       atomic.Value // func(ICETransportState)
+	onSelectedCandidatePairChangeHandler atomic.Value // func(*ICECandidatePair)
 
-	state ICETransportState
+	state atomic.Value // ICETransportState
 
 	gatherer *ICEGatherer
 	conn     *ice.Conn
@@ -60,12 +60,13 @@ type ICETransport struct {
 
 // NewICETransport creates a new NewICETransport.
 func NewICETransport(gatherer *ICEGatherer, loggerFactory logging.LoggerFactory) *ICETransport {
-	return &ICETransport{
+	iceTransport := &ICETransport{
 		gatherer:      gatherer,
 		loggerFactory: loggerFactory,
 		log:           loggerFactory.NewLogger("ortc"),
-		state:         ICETransportStateNew,
 	}
+	iceTransport.setState(ICETransportStateNew)
+	return iceTransport
 }
 
 // Start incoming connectivity checks based on its configured role.
@@ -83,15 +84,13 @@ func (t *ICETransport) Start(gatherer *ICEGatherer, params ICEParameters, role *
 
 	agent := t.gatherer.getAgent()
 	if agent == nil {
-		return errors.New("ICEAgent does not exist, unable to start ICETransport")
+		return fmt.Errorf("%w: unable to start ICETransport", errICEAgentNotExist)
 	}
 
 	if err := agent.OnConnectionStateChange(func(iceState ice.ConnectionState) {
 		state := newICETransportStateFromICE(iceState)
-		t.lock.Lock()
-		t.state = state
-		t.lock.Unlock()
 
+		t.setState(state)
 		t.onConnectionStateChange(state)
 	}); err != nil {
 		return err
@@ -99,7 +98,7 @@ func (t *ICETransport) Start(gatherer *ICEGatherer, params ICEParameters, role *
 	if err := agent.OnSelectedCandidatePairChange(func(local, remote ice.Candidate) {
 		candidates, err := newICECandidatesFromICE([]ice.Candidate{local, remote})
 		if err != nil {
-			t.log.Warnf("Unable to convert ICE candidates to ICECandidates: %s", err)
+			t.log.Warnf("%w: %s", errICECandiatesCoversionFailed, err)
 			return
 		}
 		t.onSelectedCandidatePairChange(NewICECandidatePair(&candidates[0], &candidates[1]))
@@ -131,7 +130,7 @@ func (t *ICETransport) Start(gatherer *ICEGatherer, params ICEParameters, role *
 			params.Password)
 
 	default:
-		err = errors.New("unknown ICE Role")
+		err = errICERoleUnknown
 	}
 
 	// Reacquire the lock to set the connection/mux
@@ -160,7 +159,7 @@ func (t *ICETransport) restart() error {
 
 	agent := t.gatherer.getAgent()
 	if agent == nil {
-		return errors.New("ICEAgent does not exist, unable to restart ICETransport")
+		return fmt.Errorf("%w: unable to restart ICETransport", errICEAgentNotExist)
 	}
 
 	if err := agent.Restart(t.gatherer.api.settingEngine.candidates.UsernameFragment, t.gatherer.api.settingEngine.candidates.Password); err != nil {
@@ -185,26 +184,26 @@ func (t *ICETransport) Stop() error {
 // OnSelectedCandidatePairChange sets a handler that is invoked when a new
 // ICE candidate pair is selected
 func (t *ICETransport) OnSelectedCandidatePairChange(f func(*ICECandidatePair)) {
-	t.onSelectedCandidatePairChangeHdlr.Store(f)
+	t.onSelectedCandidatePairChangeHandler.Store(f)
 }
 
 func (t *ICETransport) onSelectedCandidatePairChange(pair *ICECandidatePair) {
-	hdlr := t.onSelectedCandidatePairChangeHdlr.Load()
-	if hdlr != nil {
-		hdlr.(func(*ICECandidatePair))(pair)
+	handler := t.onSelectedCandidatePairChangeHandler.Load()
+	if handler != nil {
+		handler.(func(*ICECandidatePair))(pair)
 	}
 }
 
 // OnConnectionStateChange sets a handler that is fired when the ICE
 // connection state changes.
 func (t *ICETransport) OnConnectionStateChange(f func(ICETransportState)) {
-	t.onConnectionStateChangeHdlr.Store(f)
+	t.onConnectionStateChangeHandler.Store(f)
 }
 
 func (t *ICETransport) onConnectionStateChange(state ICETransportState) {
-	hdlr := t.onConnectionStateChangeHdlr.Load()
-	if hdlr != nil {
-		hdlr.(func(ICETransportState))(state)
+	handler := t.onConnectionStateChangeHandler.Load()
+	if handler != nil {
+		handler.(func(ICETransportState))(state)
 	}
 }
 
@@ -227,7 +226,7 @@ func (t *ICETransport) SetRemoteCandidates(remoteCandidates []ICECandidate) erro
 
 	agent := t.gatherer.getAgent()
 	if agent == nil {
-		return errors.New("ICEAgent does not exist, unable to set remote candidates")
+		return fmt.Errorf("%w: unable to set remote candidates", errICEAgentNotExist)
 	}
 
 	for _, c := range remoteCandidates {
@@ -260,7 +259,7 @@ func (t *ICETransport) AddRemoteCandidate(remoteCandidate ICECandidate) error {
 
 	agent := t.gatherer.getAgent()
 	if agent == nil {
-		return errors.New("ICEAgent does not exist, unable to add remote candidates")
+		return fmt.Errorf("%w: unable to add remote candidates", errICEAgentNotExist)
 	}
 
 	err = agent.AddRemoteCandidate(c)
@@ -273,9 +272,14 @@ func (t *ICETransport) AddRemoteCandidate(remoteCandidate ICECandidate) error {
 
 // State returns the current ice transport state.
 func (t *ICETransport) State() ICETransportState {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-	return t.state
+	if v := t.state.Load(); v != nil {
+		return v.(ICETransportState)
+	}
+	return ICETransportState(0)
+}
+
+func (t *ICETransport) setState(i ICETransportState) {
+	t.state.Store(i)
 }
 
 // NewEndpoint registers a new endpoint on the underlying mux.
@@ -287,7 +291,7 @@ func (t *ICETransport) NewEndpoint(f mux.MatchFunc) *mux.Endpoint {
 
 func (t *ICETransport) ensureGatherer() error {
 	if t.gatherer == nil {
-		return errors.New("gatherer not started")
+		return errICEGathererNotStarted
 	} else if t.gatherer.getAgent() == nil {
 		if err := t.gatherer.createAgent(); err != nil {
 			return err
@@ -341,7 +345,7 @@ func (t *ICETransport) setRemoteCredentials(newUfrag, newPwd string) error {
 
 	agent := t.gatherer.getAgent()
 	if agent == nil {
-		return errors.New("ICEAgent does not exist, unable to SetRemoteCredentials")
+		return fmt.Errorf("%w: unable to SetRemoteCredentials", errICEAgentNotExist)
 	}
 
 	return agent.SetRemoteCredentials(newUfrag, newPwd)

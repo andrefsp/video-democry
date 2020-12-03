@@ -6,7 +6,7 @@ package webrtc
 import (
 	"syscall/js"
 
-	"github.com/pion/sdp/v2"
+	"github.com/pion/ice/v2"
 	"github.com/pion/webrtc/v3/pkg/rtcerr"
 )
 
@@ -21,6 +21,7 @@ type PeerConnection struct {
 	// syscall/js API. Initially nil.
 	onSignalingStateChangeHandler     *js.Func
 	onDataChannelHandler              *js.Func
+	onNegotiationNeededHandler        *js.Func
 	onConnectionStateChangeHandler    *js.Func
 	onICEConnectionStateChangeHandler *js.Func
 	onICECandidateHandler             *js.Func
@@ -97,6 +98,21 @@ func (pc *PeerConnection) OnDataChannel(f func(*DataChannel)) {
 	})
 	pc.onDataChannelHandler = &onDataChannelHandler
 	pc.underlying.Set("ondatachannel", onDataChannelHandler)
+}
+
+// OnNegotiationNeeded sets an event handler which is invoked when
+// a change has occurred which requires session negotiation
+func (pc *PeerConnection) OnNegotiationNeeded(f func()) {
+	if pc.onNegotiationNeededHandler != nil {
+		oldHandler := pc.onNegotiationNeededHandler
+		defer oldHandler.Release()
+	}
+	onNegotiationNeededHandler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		go f()
+		return js.Undefined()
+	})
+	pc.onNegotiationNeededHandler = &onNegotiationNeededHandler
+	pc.underlying.Set("onnegotiationneeded", onNegotiationNeededHandler)
 }
 
 // OnICEConnectionStateChange sets an event handler which is called
@@ -386,6 +402,9 @@ func (pc *PeerConnection) Close() (err error) {
 	if pc.onDataChannelHandler != nil {
 		pc.onDataChannelHandler.Release()
 	}
+	if pc.onNegotiationNeededHandler != nil {
+		pc.onNegotiationNeededHandler.Release()
+	}
 	if pc.onConnectionStateChangeHandler != nil {
 		pc.onConnectionStateChangeHandler.Release()
 	}
@@ -459,8 +478,8 @@ func (pc *PeerConnection) ConnectionState() PeerConnectionState {
 	return newPeerConnectionState(rawState)
 }
 
-func (pc *PeerConnection) setGatherCompleteHdlr(hdlr func()) {
-	pc.onGatherCompleteHandler = hdlr
+func (pc *PeerConnection) setGatherCompleteHandler(handler func()) {
+	pc.onGatherCompleteHandler = handler
 
 	// If no onIceCandidate handler has been set provide an empty one
 	// otherwise our onGatherCompleteHandler will not be executed
@@ -551,15 +570,16 @@ func valueToICECandidate(val js.Value) *ICECandidate {
 	}
 	if jsValueIsUndefined(val.Get("protocol")) && !jsValueIsUndefined(val.Get("candidate")) {
 		// Missing some fields, assume it's Firefox and parse SDP candidate.
-		attribute := sdp.NewAttribute("candidate", val.Get("candidate").String())
-		sdpCandidate, err := attribute.ToICECandidate()
+		c, err := ice.UnmarshalCandidate(val.Get("candidate").String())
 		if err != nil {
 			return nil
 		}
-		iceCandidate, err := newICECandidateFromSDP(sdpCandidate)
+
+		iceCandidate, err := newICECandidateFromICE(c)
 		if err != nil {
 			return nil
 		}
+
 		return &iceCandidate
 	}
 	protocol, _ := NewICEProtocol(val.Get("protocol").String())
@@ -632,7 +652,7 @@ func iceCandidateInitToValue(candidate ICECandidateInit) js.Value {
 		"candidate":        candidate.Candidate,
 		"sdpMid":           stringPointerToValue(candidate.SDPMid),
 		"sdpMLineIndex":    uint16PointerToValue(candidate.SDPMLineIndex),
-		"usernameFragment": candidate.UsernameFragment,
+		"usernameFragment": stringPointerToValue(candidate.UsernameFragment),
 	})
 }
 

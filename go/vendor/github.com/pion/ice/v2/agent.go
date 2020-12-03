@@ -15,6 +15,7 @@ import (
 	"github.com/pion/stun"
 	"github.com/pion/transport/packetio"
 	"github.com/pion/transport/vnet"
+	"golang.org/x/net/proxy"
 )
 
 type bindingRequest struct {
@@ -126,6 +127,8 @@ type Agent struct {
 	interfaceFilter func(string) bool
 
 	insecureSkipVerify bool
+
+	proxyDialer proxy.Dialer
 }
 
 type task struct {
@@ -224,7 +227,7 @@ func (a *Agent) taskLoop() {
 }
 
 // NewAgent creates a new Agent
-func NewAgent(config *AgentConfig) (*Agent, error) {
+func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 	var err error
 	if config.PortMax < config.PortMin {
 		return nil, ErrPort
@@ -292,6 +295,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		loggerFactory:     loggerFactory,
 		log:               log,
 		net:               config.Net,
+		proxyDialer:       config.ProxyDialer,
 
 		mDNSMode: mDNSMode,
 		mDNSName: mDNSName,
@@ -692,7 +696,8 @@ func (a *Agent) checkKeepalive() {
 	}
 
 	if (a.keepaliveInterval != 0) &&
-		(time.Since(selectedPair.local.LastSent()) > a.keepaliveInterval) {
+		((time.Since(selectedPair.local.LastSent()) > a.keepaliveInterval) ||
+			(time.Since(selectedPair.remote.LastReceived()) > a.keepaliveInterval)) {
 		// we use binding request instead of indication to support refresh consent schemas
 		// see https://tools.ietf.org/html/rfc7675
 		a.selector.PingCandidate(selectedPair.local, selectedPair.remote)
@@ -741,13 +746,13 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 	if a.mDNSConn == nil {
 		return
 	}
-	_, src, err := a.mDNSConn.Query(context.TODO(), c.Address())
+	_, src, err := a.mDNSConn.Query(c.context(), c.Address())
 	if err != nil {
 		a.log.Warnf("Failed to discover mDNS candidate %s: %v", c.Address(), err)
 		return
 	}
 
-	ip, _, _, _ := parseAddr(src)
+	ip, _, _, _ := parseAddr(src) //nolint:dogsled
 	if ip == nil {
 		a.log.Warnf("Failed to discover mDNS candidate %s: failed to parse IP", c.Address())
 		return
@@ -1008,7 +1013,7 @@ func (a *Agent) handleInboundBindingSuccess(id [stun.TransactionIDSize]byte) (bo
 }
 
 // handleInbound processes STUN traffic from a remote candidate
-func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr) {
+func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr) { //nolint:gocognit
 	var err error
 	if m == nil || local == nil {
 		return
@@ -1073,7 +1078,6 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 				Component: local.Component(),
 				RelAddr:   "",
 				RelPort:   0,
-				// TODO set TCPType
 			}
 
 			prflxCandidate, err := NewCandidatePeerReflexive(&prflxCandidateConfig)
@@ -1101,7 +1105,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 // and returns true if it is an actual remote candidate
 func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) bool {
 	var isValidCandidate uint64
-	if err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	if err := a.run(local.context(), func(ctx context.Context, agent *Agent) {
 		remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
 		if remoteCandidate != nil {
 			remoteCandidate.seen(false)

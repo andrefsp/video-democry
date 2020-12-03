@@ -6,7 +6,7 @@ import (
 	"github.com/pion/logging"
 )
 
-// API bundles the global funcions of the WebRTC and ORTC API.
+// API bundles the global functions of the WebRTC and ORTC API.
 // Some of these functions are also exported globally using the
 // defaultAPI object. Note that the global version of the API
 // may be phased out in the future.
@@ -39,10 +39,14 @@ func NewAPI(options ...func(*API)) *API {
 }
 
 // WithMediaEngine allows providing a MediaEngine to the API.
-// Settings should not be changed after passing the engine to an API.
-func WithMediaEngine(m MediaEngine) func(a *API) {
+// Settings can be changed after passing the engine to an API.
+func WithMediaEngine(m *MediaEngine) func(a *API) {
 	return func(a *API) {
-		a.mediaEngine = &m
+		if m != nil {
+			a.mediaEngine = m
+		} else {
+			a.mediaEngine = &MediaEngine{}
+		}
 	}
 }
 

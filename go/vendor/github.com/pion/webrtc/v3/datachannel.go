@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/datachannel"
@@ -15,7 +16,7 @@ import (
 	"github.com/pion/webrtc/v3/pkg/rtcerr"
 )
 
-const dataChannelBufferSize = math.MaxUint16 //message size limit for Chromium
+const dataChannelBufferSize = math.MaxUint16 // message size limit for Chromium
 var errSCTPNotEstablished = errors.New("SCTP not established")
 
 // DataChannel represents a WebRTC DataChannel
@@ -32,7 +33,7 @@ type DataChannel struct {
 	protocol                   string
 	negotiated                 bool
 	id                         *uint16
-	readyState                 DataChannelState
+	readyState                 atomic.Value // DataChannelState
 	bufferedAmountLowThreshold uint64
 	detachCalled               bool
 
@@ -84,7 +85,7 @@ func (api *API) newDataChannel(params *DataChannelParameters, log logging.Levele
 		return nil, &rtcerr.TypeError{Err: ErrStringSizeLimit}
 	}
 
-	return &DataChannel{
+	d := &DataChannel{
 		statsID:           fmt.Sprintf("DataChannel-%d", time.Now().UnixNano()),
 		label:             params.Label,
 		protocol:          params.Protocol,
@@ -93,10 +94,12 @@ func (api *API) newDataChannel(params *DataChannelParameters, log logging.Levele
 		ordered:           params.Ordered,
 		maxPacketLifeTime: params.MaxPacketLifeTime,
 		maxRetransmits:    params.MaxRetransmits,
-		readyState:        DataChannelStateConnecting,
 		api:               api,
 		log:               log,
-	}, nil
+	}
+
+	d.setReadyState(DataChannelStateConnecting)
+	return d, nil
 }
 
 // open opens the datachannel over the sctp transport
@@ -211,10 +214,9 @@ func (d *DataChannel) OnOpen(f func()) {
 	d.mu.Lock()
 	d.openHandlerOnce = sync.Once{}
 	d.onOpenHandler = f
-	readyState := d.readyState
 	d.mu.Unlock()
 
-	if readyState == DataChannelStateOpen {
+	if d.ReadyState() == DataChannelStateOpen {
 		// If the data channel is already open, call the handler immediately.
 		go d.openHandlerOnce.Do(func() {
 			f()
@@ -225,12 +227,12 @@ func (d *DataChannel) OnOpen(f func()) {
 
 func (d *DataChannel) onOpen() {
 	d.mu.RLock()
-	hdlr := d.onOpenHandler
+	handler := d.onOpenHandler
 	d.mu.RUnlock()
 
-	if hdlr != nil {
+	if handler != nil {
 		go d.openHandlerOnce.Do(func() {
-			hdlr()
+			handler()
 			d.checkDetachAfterOpen()
 		})
 	}
@@ -246,11 +248,11 @@ func (d *DataChannel) OnClose(f func()) {
 
 func (d *DataChannel) onClose() {
 	d.mu.RLock()
-	hdlr := d.onCloseHandler
+	handler := d.onCloseHandler
 	d.mu.RUnlock()
 
-	if hdlr != nil {
-		go hdlr()
+	if handler != nil {
+		go handler()
 	}
 }
 
@@ -268,13 +270,13 @@ func (d *DataChannel) OnMessage(f func(msg DataChannelMessage)) {
 
 func (d *DataChannel) onMessage(msg DataChannelMessage) {
 	d.mu.RLock()
-	hdlr := d.onMessageHandler
+	handler := d.onMessageHandler
 	d.mu.RUnlock()
 
-	if hdlr == nil {
+	if handler == nil {
 		return
 	}
-	hdlr(msg)
+	handler(msg)
 }
 
 func (d *DataChannel) handleOpen(dc *datachannel.DataChannel) {
@@ -303,19 +305,26 @@ func (d *DataChannel) OnError(f func(err error)) {
 
 func (d *DataChannel) onError(err error) {
 	d.mu.RLock()
-	hdlr := d.onErrorHandler
+	handler := d.onErrorHandler
 	d.mu.RUnlock()
 
-	if hdlr != nil {
-		go hdlr(err)
+	if handler != nil {
+		go handler(err)
 	}
 }
 
+// See https://github.com/pion/webrtc/issues/1516
+// nolint:gochecknoglobals
+var rlBufPool = sync.Pool{New: func() interface{} {
+	return make([]byte, dataChannelBufferSize)
+}}
+
 func (d *DataChannel) readLoop() {
 	for {
-		buffer := make([]byte, dataChannelBufferSize)
+		buffer := rlBufPool.Get().([]byte)
 		n, isString, err := d.dataChannel.ReadDataChannel(buffer)
 		if err != nil {
+			rlBufPool.Put(buffer) // nolint:staticcheck
 			d.setReadyState(DataChannelStateClosed)
 			if err != io.EOF {
 				d.onError(err)
@@ -324,7 +333,13 @@ func (d *DataChannel) readLoop() {
 			return
 		}
 
-		d.onMessage(DataChannelMessage{Data: buffer[:n], IsString: isString})
+		m := DataChannelMessage{Data: make([]byte, n), IsString: isString}
+		copy(m.Data, buffer[:n])
+		// The 'staticcheck' pragma is a false positive on the part of the CI linter.
+		rlBufPool.Put(buffer) // nolint:staticcheck
+
+		// NB: Why was DataChannelMessage not passed as a pointer value?
+		d.onMessage(m) // nolint:staticcheck
 	}
 }
 
@@ -353,8 +368,8 @@ func (d *DataChannel) SendText(s string) error {
 func (d *DataChannel) ensureOpen() error {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	if d.readyState != DataChannelStateOpen {
-		return &rtcerr.InvalidStateError{Err: ErrDataChannelNotOpen}
+	if d.ReadyState() != DataChannelStateOpen {
+		return io.ErrClosedPipe
 	}
 	return nil
 }
@@ -372,11 +387,11 @@ func (d *DataChannel) Detach() (datachannel.ReadWriteCloser, error) {
 	defer d.mu.Unlock()
 
 	if !d.api.settingEngine.detach.DataChannels {
-		return nil, fmt.Errorf("enable detaching by calling webrtc.DetachDataChannels()")
+		return nil, errDetachNotEnabled
 	}
 
 	if d.dataChannel == nil {
-		return nil, fmt.Errorf("datachannel not opened yet, try calling Detach from OnOpen")
+		return nil, errDetachBeforeOpened
 	}
 
 	d.detachCalled = true
@@ -388,11 +403,10 @@ func (d *DataChannel) Detach() (datachannel.ReadWriteCloser, error) {
 // the DataChannel object was created by this peer or the remote peer.
 func (d *DataChannel) Close() error {
 	d.mu.Lock()
-	isClosed := d.readyState == DataChannelStateClosed
 	haveSctpTransport := d.dataChannel != nil
 	d.mu.Unlock()
 
-	if isClosed {
+	if d.ReadyState() == DataChannelStateClosed {
 		return nil
 	}
 
@@ -474,10 +488,10 @@ func (d *DataChannel) ID() *uint16 {
 
 // ReadyState represents the state of the DataChannel object.
 func (d *DataChannel) ReadyState() DataChannelState {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-
-	return d.readyState
+	if v := d.readyState.Load(); v != nil {
+		return v.(DataChannelState)
+	}
+	return DataChannelState(0)
 }
 
 // BufferedAmount represents the number of bytes of application data
@@ -561,7 +575,7 @@ func (d *DataChannel) collectStats(collector *statsReportCollector) {
 		Label:     d.label,
 		Protocol:  d.protocol,
 		// TransportID string `json:"transportId"`
-		State: d.readyState,
+		State: d.ReadyState(),
 	}
 
 	if d.id != nil {
@@ -579,8 +593,5 @@ func (d *DataChannel) collectStats(collector *statsReportCollector) {
 }
 
 func (d *DataChannel) setReadyState(r DataChannelState) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	d.readyState = r
+	d.readyState.Store(r)
 }

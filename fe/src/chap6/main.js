@@ -186,14 +186,6 @@ async function handlePing(payload) {
   }));
 }
 
-async function ping() {
-  //ws.send(JSON.stringify({
-  //  uri: 'ping',
-  //}));
-  console.log("We are here!");
-  setTimeout(ping, 1000);
-}
-
 
 async function start() {
   let settings = await import('../settings.js');
@@ -206,9 +198,6 @@ async function start() {
   document.getElementById("yoursp").innerHTML = `me ( ${user.username} )`;
 
   joinButton.addEventListener('click', sendOffer);
-
-  ping();
-  console.log("!!!terminated");
 }
 
 

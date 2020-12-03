@@ -1,5 +1,6 @@
 package chap7
 
+/*
 import (
 	"encoding/json"
 	"log"
@@ -253,3 +254,4 @@ func New(cfg *config.Config) *chap7Handler {
 		cfg: cfg,
 	}
 }
+*/
