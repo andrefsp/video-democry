@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/andrefsp/video-democry/go/config"
-	"github.com/andrefsp/video-democry/go/httpd/responses"
+	"github.com/pion/webrtc/v3"
+
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
-	"github.com/pion/webrtc/v3"
+
+	"github.com/andrefsp/video-democry/go/config"
+	"github.com/andrefsp/video-democry/go/httpd/responses"
 )
 
 var upgrader = websocket.Upgrader{
@@ -36,8 +38,7 @@ type chap7Handler struct {
 	cfg *config.Config
 }
 
-func (s *chap7Handler) newPeerConnection(offer webrtc.SessionDescription) (*webrtc.PeerConnection, error) {
-
+func (s *chap7Handler) newPeerConnection() (*webrtc.PeerConnection, error) {
 	return webrtc.
 		NewPeerConnection(webrtc.Configuration{
 			ICETransportPolicy: webrtc.ICETransportPolicyRelay,
@@ -91,7 +92,7 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		return err
 	}
 
-	pc, err := s.newPeerConnection(om.Offer)
+	pc, err := s.newPeerConnection()
 	if err != nil {
 		log.Print("Error creating Peer connection: ", err.Error())
 		return err
@@ -109,9 +110,36 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		})
 	})
 
+	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: "video/VP8"},
+		"video",
+		user.StreamID,
+	)
+	if err != nil {
+		log.Printf("Error: %s", err.Error())
+		panic(err)
+	}
+
+	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: "audio/OPUS"},
+		"audio",
+		user.StreamID,
+	)
+	if err != nil {
+		log.Printf("Error: %s", err.Error())
+		panic(err)
+	}
+
+	pc.AddTrack(videoTrack)
+	pc.AddTrack(audioTrack)
+
 	pc.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
-		log.Printf("We got a track:: %+v", t)
-		log.Printf("We got a receiver:: %+v", r)
+		if t.Kind().String() == "video" {
+			CloneTrack(pc, videoTrack)(t, r)
+		}
+		if t.Kind().String() == "audio" {
+			CloneTrack(pc, audioTrack)(t, r)
+		}
 	})
 
 	if err := pc.SetRemoteDescription(om.Offer); err != nil {

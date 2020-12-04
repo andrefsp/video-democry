@@ -1,11 +1,11 @@
 export function getRTCConfiguration(credential, username, servers) {
-  return {
-    iceTransportPolicy: 'relay',
+  return { 
     //iceServers: [
     //  {
     //    urls: "stun:stun.l.google.com:19302",
     //  }
-    //]
+    //],
+    iceTransportPolicy: 'relay',
     iceServers: servers.map(server => {
       return {
         urls: `${servers}`,
@@ -13,5 +13,6 @@ export function getRTCConfiguration(credential, username, servers) {
         username: username,
       }
     })
+
   }
 };

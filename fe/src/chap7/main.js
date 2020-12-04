@@ -21,10 +21,9 @@ let stream;                         // local stream
 let rtcConn;
 
 
-async function setJoinControls(payload) {
+function setJoinControls(payload) {
   joinDiv.style.display = "block";
 }
-
 
 async function setupLocalSession() {
   if (!RTCPeerConnection) {
@@ -52,7 +51,6 @@ async function getRTCPeerConnection() {
     if (!event.candidate) {
       return 
     } 
-    console.log('Sending ICE candidate: ', event.candidate);
     // Broadcast ICE candidates to all users 
     ws.send(JSON.stringify({
       uri: "in/icecandidate",
@@ -62,9 +60,13 @@ async function getRTCPeerConnection() {
   }
   
   conn.ontrack = async function (event) {
+    console.log("Track received: ", event);
     var targetUser = room.streams.get(event.streams[0].id);
     var targetVideo = document.getElementById("video-" + targetUser.username);
-     
+    
+    console.log(targetVideo);
+    console.log(targetUser);
+
     await assignStream(targetVideo, event.streams[0]);
   }
 
@@ -76,21 +78,37 @@ async function getRTCPeerConnection() {
 async function handleUserJoinEvent(payload) {
   // room.addUser(payload.user);
   // Redraw room
-  console.log("User join: ", payload);
-  room.addUserMulti(payload.roomUsers);
+  // console.log("User join: ", payload);
+  await room.addUserMulti(payload.roomUsers);
+
+  var userDiv = document.createElement("div");
+  userDiv.setAttribute("id", "div-" + payload.user.username);
+
+  var userVideo = document.createElement("video")
+  userVideo.autoplay = true
+  userVideo.controls = true
+  userVideo.setAttribute("id", "video-" + payload.user.username)
+  userDiv.appendChild(userVideo);
+
+  var newP = document.createElement("p");  
+  newP.innerText = payload.user.username;
+  userDiv.appendChild(newP)
+
+  others.appendChild(userDiv);
 }
 
 async function handleUserLeftEvent(payload) {
   room.removeUser(payload.user); 
+  var userDiv = document.getElementById("div-" + payload.user.username);
+  userDiv.remove();
 }
 
 async function handleICECandidate(payload) {
-  console.log('Received ICE candidate: ', payload.candidate);
 
   try {
     await rtcConn.addIceCandidate(new RTCIceCandidate(payload.candidate));
   } catch (e) {
-    console.log("Error adding ice candidate");
+    console.log("Error adding ice candidate. ", e);
     return
   }
 }

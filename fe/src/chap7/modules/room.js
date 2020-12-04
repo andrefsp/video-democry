@@ -9,7 +9,7 @@ export class Room {
     if (user.id === undefined) {
       throw "Error: User requires an ID"
     }
-    this.users.set(user.id,  user);
+    this.users.set(user.id, user);
     this.streams.set(user.streamID, user);
   }
 
