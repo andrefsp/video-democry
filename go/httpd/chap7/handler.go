@@ -1,6 +1,5 @@
 package chap7
 
-/*
 import (
 	"encoding/json"
 	"log"
@@ -38,13 +37,8 @@ type chap7Handler struct {
 }
 
 func (s *chap7Handler) newPeerConnection(offer webrtc.SessionDescription) (*webrtc.PeerConnection, error) {
-	mediaEngine := webrtc.MediaEngine{}
-	if err := mediaEngine.PopulateFromSDP(offer); err != nil {
-		return nil, err
-	}
 
 	return webrtc.
-		NewAPI(webrtc.WithMediaEngine(mediaEngine)).
 		NewPeerConnection(webrtc.Configuration{
 			ICETransportPolicy: webrtc.ICETransportPolicyRelay,
 			ICEServers: []webrtc.ICEServer{
@@ -115,13 +109,9 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		})
 	})
 
-	pc.OnTrack(func(t *webrtc.Track, r *webrtc.RTPReceiver) {
+	pc.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
 		log.Printf("We got a track:: %+v", t)
 		log.Printf("We got a receiver:: %+v", r)
-
-		if _, err := pc.AddTrack(t); err != nil {
-			log.Println("Error: ", err.Error())
-		}
 	})
 
 	if err := pc.SetRemoteDescription(om.Offer); err != nil {
@@ -254,4 +244,3 @@ func New(cfg *config.Config) *chap7Handler {
 		cfg: cfg,
 	}
 }
-*/

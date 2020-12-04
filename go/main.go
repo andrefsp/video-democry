@@ -12,7 +12,7 @@ import (
 	"github.com/andrefsp/video-democry/go/netutils"
 
 	"github.com/andrefsp/video-democry/go/httpd"
-	// "github.com/andrefsp/video-democry/go/stunturn"
+	"github.com/andrefsp/video-democry/go/stunturn"
 )
 
 func getPWD() string {
@@ -73,7 +73,7 @@ func getStunTurnAddr() string {
 }
 
 func main() {
-	// go stunturn.Start(hostname, relayAddr)
+	go stunturn.Start(hostname, relayAddr)
 
 	s := httpd.NewServer(&config.Config{
 		StaticDir:      staticDir,

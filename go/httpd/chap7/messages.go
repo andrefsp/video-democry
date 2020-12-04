@@ -2,17 +2,6 @@ package chap7
 
 import "github.com/pion/webrtc/v3"
 
-// models
-type user struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	StreamID string `json:"streamID"`
-
-	pc *webrtc.PeerConnection
-}
-
-func (u *user) setPeerConnection() {}
-
 // messages
 type InfoMessage struct {
 	Uri     string `json:"uri"`
