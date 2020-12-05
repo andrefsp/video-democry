@@ -19,7 +19,7 @@ upload:
 	ssh root@${DOMAIN} mkdir -p /opt/vid/ /opt/vid/fe /opt/vid/go
 	scp  -r ./go/democry root@${DOMAIN}:/opt/vid/go
 	scp  -r ./go/ssl root@${DOMAIN}:/opt/vid/go
-	scp  -r ./fe/src root@${DOMAIN}:/opt/vid/fe/src
+	scp  -r ./fe/src root@${DOMAIN}:/opt/vid/fe
 	scp ./supervisor/v.conf root@${DOMAIN}:/etc/supervisor/conf.d/
 
 

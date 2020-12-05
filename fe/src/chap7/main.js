@@ -61,7 +61,7 @@ async function getRTCPeerConnection() {
   
   conn.ontrack = async function (event) {
     console.log("Track received: ", event);
-    var targetUser = room.streams.get(event.streams[0].id);
+    var targetUser = room.getUserByStreamID(event.streams[0].id);
     var targetVideo = document.getElementById("video-" + targetUser.username);
     
     console.log(targetVideo);
