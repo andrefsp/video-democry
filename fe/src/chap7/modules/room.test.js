@@ -35,6 +35,28 @@ test('Room can get multi user', () => {
   expect(room.countUsers()).toBe(3);
 });
 
+test('Room can update user list', () => {
+  let room = new Room('thisid'); 
+  let users = [
+    newUser({id: 'streamID1'}),
+    newUser({id: 'streamID2'}),
+    newUser({id: 'streamID3'}),
+  ];
+
+	room.addUserMulti(users);
+  expect(room.countUsers()).toBe(3);
+
+	room.addUserMulti([
+		users[0],
+		users[1],
+	])
+  expect(room.countUsers()).toBe(2);
+});
+
+
+
+
+
 test('Room can get user by ID and StreamID', () => {
   let room = new Room('thisid'); 
   let users = [

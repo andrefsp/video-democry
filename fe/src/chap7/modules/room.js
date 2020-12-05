@@ -22,10 +22,27 @@ export class Room {
     this.streams.set(user.streamID, new Map());
   }
 
-  addUserMulti(users) {
-    users.forEach(user => {
-      this.addUser(user)
-    })
+	addUserMulti(users) {
+		let newUsers = new Map();
+
+		users.forEach(user => {
+			newUsers.set(user.id, user)
+		});
+
+		// Add new users
+		newUsers.forEach((user, userID) => {
+			if (!this.users.has(userID)) {
+					this.addUser(user)
+			}
+		})
+
+		// Remove users
+		this.users.forEach((user, userID) => {
+			if (!newUsers.has(userID)) {
+				this.removeUser(user)
+			}
+		})
+
 	}
 
   removeUser(user) {
@@ -35,7 +52,7 @@ export class Room {
       this.streams.delete(streamID);
     }
   }
-	
+
 	getUserByID(userID) {
 		return this.users.get(userID)
 	}

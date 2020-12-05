@@ -25,6 +25,44 @@ function setJoinControls(payload) {
   joinDiv.style.display = "block";
 }
 
+async function drawRoom() {
+	others.innerHTML = "";
+
+	room.users.forEach(async (user, userID) => {
+
+		var userDiv = document.createElement("div");
+		userDiv.setAttribute("id", "div-" + user.username);
+
+		var userVideo = document.createElement("video")
+		userVideo.autoplay = true
+		userVideo.controls = true
+		userVideo.setAttribute("id", "video-" + user.username)
+		userDiv.appendChild(userVideo);
+
+		var newP = document.createElement("p");  
+		newP.innerText = user.username;
+		userDiv.appendChild(newP)
+
+		others.appendChild(userDiv);
+	});
+}
+
+async function assignTracks() {
+	room.users.forEach(async (user, userID) => {
+		let tracks = room.getUserTracks(userID);
+		if (tracks.size == 0) {
+			return
+		}
+
+		tracks.forEach(async (track, _) => {
+    	var targetVideo = document.getElementById("video-" + user.username);
+    	console.log(targetVideo);
+			await assignStream(targetVideo, track.streams[0]);
+		});
+
+	});
+}
+
 async function setupLocalSession() {
   if (!RTCPeerConnection) {
     console.log("RTCPeerConnection not supported!");
@@ -60,14 +98,9 @@ async function getRTCPeerConnection() {
   }
   
   conn.ontrack = async function (event) {
-    console.log("Track received: ", event);
-    var targetUser = room.getUserByStreamID(event.streams[0].id);
-    var targetVideo = document.getElementById("video-" + targetUser.username);
-    
-    console.log(targetVideo);
-    console.log(targetUser);
-
-    await assignStream(targetVideo, event.streams[0]);
+		console.log("Track received: ", event);
+		room.addTrack(event);
+		drawRoom().then(assignTracks());
   }
 
   stream.getTracks().forEach( track => conn.addTrack(track, stream));
@@ -79,28 +112,13 @@ async function handleUserJoinEvent(payload) {
   // room.addUser(payload.user);
   // Redraw room
   // console.log("User join: ", payload);
-  await room.addUserMulti(payload.roomUsers);
-
-  var userDiv = document.createElement("div");
-  userDiv.setAttribute("id", "div-" + payload.user.username);
-
-  var userVideo = document.createElement("video")
-  userVideo.autoplay = true
-  userVideo.controls = true
-  userVideo.setAttribute("id", "video-" + payload.user.username)
-  userDiv.appendChild(userVideo);
-
-  var newP = document.createElement("p");  
-  newP.innerText = payload.user.username;
-  userDiv.appendChild(newP)
-
-  others.appendChild(userDiv);
+	await room.addUserMulti(payload.roomUsers);
+	await drawRoom();
 }
 
 async function handleUserLeftEvent(payload) {
-  room.removeUser(payload.user); 
-  var userDiv = document.getElementById("div-" + payload.user.username);
-  userDiv.remove();
+	await room.addUserMulti(payload.roomUsers);
+	await drawRoom();
 }
 
 async function handleICECandidate(payload) {
