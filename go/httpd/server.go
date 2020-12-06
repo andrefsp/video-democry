@@ -13,6 +13,7 @@ import (
 	"github.com/andrefsp/video-democry/go/httpd/chap5"
 	"github.com/andrefsp/video-democry/go/httpd/chap6"
 	"github.com/andrefsp/video-democry/go/httpd/chap7"
+	"github.com/andrefsp/video-democry/go/httpd/chap8"
 )
 
 func cors(h http.HandlerFunc) http.HandlerFunc {
@@ -49,6 +50,9 @@ func (s *server) HttpHandler() http.Handler {
 
 	// Multi user chat with relay server
 	chap7.New(s.cfg).RegisterHandlers(s.handler.PathPrefix("/chap7").Subrouter(), cors)
+
+	// Multiple video tracks on PeerConnection
+	chap8.New(s.cfg).RegisterHandlers(s.handler.PathPrefix("/chap8").Subrouter(), cors)
 
 	// settings.js
 	s.handler.HandleFunc("/s/settings.js", s.SettingsHandler)
