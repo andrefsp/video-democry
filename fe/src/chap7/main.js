@@ -35,7 +35,8 @@ async function drawRoom() {
 
 		var userVideo = document.createElement("video")
 		userVideo.autoplay = true
-		userVideo.controls = true
+    userVideo.controls = true
+    userVideo.muted = true;
 		userVideo.setAttribute("id", "video-" + user.username)
 		userDiv.appendChild(userVideo);
 
