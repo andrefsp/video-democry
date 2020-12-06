@@ -79,6 +79,42 @@ async function setupLocalSession() {
 }
 
 
+async function startWS() {
+  ws = new WebSocket(`${wsURL}/chap7/ws?room=${room.id}`)
+
+  ws.onclose = async function(event) {
+    console.log('Connection has been closed. ', event);
+    rtcConn.close();
+  }
+
+  ws.onerror = async function(event) {
+    console.log('An error has occured: ', event); 
+    start(); // try to restart the connection
+  }
+
+  ws.onmessage = async function(event) {
+    let payload = JSON.parse(event.data);
+    switch (payload.uri) {
+      case "out/user-join":
+        return handleUserJoinEvent(payload)
+      case "out/user-left":
+        return handleUserLeftEvent(payload)
+      case "out/icecandidate":
+        return await handleICECandidate(payload)
+      case "out/offer":
+        return await handleOffer(payload)
+      case "out/answer":
+        return await handleAnswer(payload)
+      case "out/ping":
+        return await handlePing(payload)
+      default:
+        console.log("No handler for payload: ", payload)
+        return
+    }
+  }
+}
+
+
 async function getRTCPeerConnection() {
   var rtcConf = getRTCConfiguration(
     "thiskey", "thiskey", [`${stunTurnURL}`]
@@ -104,7 +140,10 @@ async function getRTCPeerConnection() {
 		drawRoom().then(assignTracks());
   }
 
-  stream.getTracks().forEach( track => conn.addTrack(track, stream));
+  conn.onnegotiationneeded = async function (event) {
+    console.log("Negotiation started. ", event);
+    sendOffer();
+  }
 
   return conn  
 }
@@ -114,12 +153,12 @@ async function handleUserJoinEvent(payload) {
   // Redraw room
   // console.log("User join: ", payload);
 	await room.addUserMulti(payload.roomUsers);
-	await drawRoom();
+	await drawRoom().then(assignTracks());
 }
 
 async function handleUserLeftEvent(payload) {
 	await room.addUserMulti(payload.roomUsers);
-	await drawRoom();
+	await drawRoom().then(assignTracks());
 }
 
 async function handleICECandidate(payload) {
@@ -159,6 +198,10 @@ async function sendOffer(e) {
   console.log("Offer was sent:: ", offer);
 } 
  
+async function joinCall(e) {
+  // Upon adding tracks a negotiation process will be starting
+  stream.getTracks().forEach( track => rtcConn.addTrack(track, stream));
+}
 
 async function handlePing(payload) {
   ws.send(JSON.stringify({
@@ -166,53 +209,22 @@ async function handlePing(payload) {
   }));
 }
 
-async function start() { 
-  
+async function start() {   
+
+  await startWS();
   await setupLocalSession();
 
   var userP = document.getElementById("yoursp");
   userP.innerHTML = `me ( ${user.username} )`;
 
-  ws = new WebSocket(`${wsURL}/chap7/ws?room=${room.id}`)
-  ws.onopen = async function(event) {
-    ws.send(JSON.stringify({
-      uri: "in/join",
-      user: user,
-    }))
-  };
+  joinButton.addEventListener('click', joinCall);
+  await setJoinControls();
 
-  ws.onclose = async function(event) {
-    console.log('Connection has been closed. ', event);
-  }
-
-  ws.onerror = async function(event) {
-    console.log('An error has occured: ', event); 
-    start(); // try to restart the connection
-  }
-
-  ws.onmessage = async function(event) {
-    let payload = JSON.parse(event.data);
-    switch (payload.uri) {
-      case "out/user-join":
-        return handleUserJoinEvent(payload)
-      case "out/user-left":
-        return handleUserLeftEvent(payload)
-      case "out/icecandidate":
-        return await handleICECandidate(payload)
-      case "out/offer":
-        return await handleOffer(payload)
-      case "out/answer":
-        return await handleAnswer(payload)
-      case "out/ping":
-        return await handlePing(payload)
-      default:
-        console.log("No handler for payload: ", payload)
-        return
-    }
-  }
-
-  joinButton.addEventListener('click', sendOffer);
-  await setJoinControls()
+  console.log(ws);
+  ws.send(JSON.stringify({
+    uri: "in/join",
+    user: user,
+  }))
 }
 
 start();
