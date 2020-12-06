@@ -42,7 +42,6 @@ export class Room {
 				this.removeUser(user)
 			}
 		})
-
 	}
 
   removeUser(user) {
@@ -76,7 +75,11 @@ export class Room {
     return this.users.size
   }
 
-	addTrack(track) {
+  addTrack(track) {
+    if (!this.streams.has(track.streams[0].id)) {
+      return
+    }
+
 		this.streams.get(track.streams[0].id).set(track.track.kind, track);
 	}
 

@@ -85,20 +85,16 @@ func (s *chap7Handler) handleICECandidate(r *room, conn *websocket.Conn, message
 }
 
 func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload []byte) error {
-	user := r.getUser(conn)
 
 	om := InOffer{}
 	if err := json.Unmarshal(messagePayload, &om); err != nil {
 		return err
 	}
 
-	pc, err := s.newPeerConnection()
-	if err != nil {
-		log.Print("Error creating Peer connection: ", err.Error())
-		return err
-	}
+	user := r.getUser(conn)
+	log.Println("Offer received. ", user)
 
-	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
+	user.pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
 			return
 		}
@@ -120,6 +116,16 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		panic(err)
 	}
 
+	videoTrack2, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: "video/VP8"},
+		"video",
+		"anotherUserStream",
+	)
+	if err != nil {
+		log.Printf("Error: %s", err.Error())
+		panic(err)
+	}
+
 	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: "audio/OPUS"},
 		"audio",
@@ -130,36 +136,36 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		panic(err)
 	}
 
-	pc.AddTrack(videoTrack)
-	pc.AddTrack(audioTrack)
+	user.pc.AddTrack(videoTrack)
+	user.pc.AddTrack(videoTrack2)
+	user.pc.AddTrack(audioTrack)
 
-	pc.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
+	user.pc.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
+		log.Println("Received track.")
 		if t.Kind().String() == "video" {
-			CloneTrack(pc, videoTrack)(t, r)
+			CloneTrack(user.pc, videoTrack)(t, r)
 		}
 		if t.Kind().String() == "audio" {
-			CloneTrack(pc, audioTrack)(t, r)
+			CloneTrack(user.pc, audioTrack)(t, r)
 		}
 	})
 
-	if err := pc.SetRemoteDescription(om.Offer); err != nil {
+	if err := user.pc.SetRemoteDescription(om.Offer); err != nil {
 		log.Print("Error: ", err.Error())
 		return err
 	}
 
 	// Answer and respond
-	answer, err := pc.CreateAnswer(nil)
+	answer, err := user.pc.CreateAnswer(nil)
 	if err != nil {
 		log.Print("Error: ", err.Error())
 		return err
 	}
 
-	if err := pc.SetLocalDescription(answer); err != nil {
+	if err := user.pc.SetLocalDescription(answer); err != nil {
 		log.Print("Error: ", err.Error())
 		return err
 	}
-
-	user.pc = pc
 
 	s.sendMessage(conn, &OutAnswer{
 		Uri:    "out/answer",
@@ -178,7 +184,15 @@ func (s *chap7Handler) handleUserJoin(r *room, conn *websocket.Conn, payload []b
 		panic(err)
 	}
 
-	r.addUser(conn, message.User)
+	user := message.User
+	pc, err := s.newPeerConnection()
+	if err != nil {
+		log.Print("Error creating Peer connection: ", err.Error())
+		panic(err)
+	}
+	user.pc = pc
+
+	r.addUser(conn, user)
 
 	for uconn := range r.users {
 		s.sendMessage(uconn, &OutUserEventMessage{
@@ -193,7 +207,6 @@ func (s *chap7Handler) handleDisconnection(r *room, conn *websocket.Conn) {
 	eventURI := "out/user-left"
 
 	user := r.getUser(conn)
-
 	r.removeUser(conn, user)
 
 	for uconn := range r.users {

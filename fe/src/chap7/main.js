@@ -7,6 +7,9 @@ import { getMedia , assignStream } from './modules/media.js';
 
 const myVideo = document.querySelector('#yours'); 
 const joinButton = document.querySelector('#join');
+
+const addTransceiver = document.querySelector('#addTransceiver');
+
 const joinDiv = document.querySelector('#join-div');
 const others = document.querySelector('#others');
 
@@ -57,7 +60,6 @@ async function assignTracks() {
 
 		tracks.forEach(async (track, _) => {
     	var targetVideo = document.getElementById("video-" + user.username);
-    	console.log(targetVideo);
 			await assignStream(targetVideo, track.streams[0]);
 		});
 
@@ -152,6 +154,8 @@ async function handleUserJoinEvent(payload) {
   // room.addUser(payload.user);
   // Redraw room
   // console.log("User join: ", payload);
+  //
+
 	await room.addUserMulti(payload.roomUsers);
 	await drawRoom().then(assignTracks());
 }
@@ -181,7 +185,7 @@ async function sendOffer(e) {
 
   try {
     offer = await rtcConn.createOffer({
-      offerToReceiveAudio: 1,  offerToReceiveVideo: 1  
+      offerToReceiveAudio: 1, offerToReceiveVideo: 1  
     })
   } catch (err) {
     console.log("error on offer ::", err);
@@ -200,7 +204,10 @@ async function sendOffer(e) {
  
 async function joinCall(e) {
   // Upon adding tracks a negotiation process will be starting
+  
+  console.log("Adding track to peer connection")
   stream.getTracks().forEach( track => rtcConn.addTrack(track, stream));
+
 }
 
 async function handlePing(payload) {
@@ -216,6 +223,11 @@ async function start() {
 
   var userP = document.getElementById("yoursp");
   userP.innerHTML = `me ( ${user.username} )`;
+
+  addTransceiver.addEventListener('click', (e) => {
+    console.log("Adding transceiver");
+    rtcConn.addTransceiver('video');
+  });
 
   joinButton.addEventListener('click', joinCall);
   await setJoinControls();
