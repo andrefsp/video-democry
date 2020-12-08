@@ -4,7 +4,19 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/pion/webrtc/v3"
 )
+
+// models
+type user struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+	StreamID string `json:"streamID"`
+
+	pc    *webrtc.PeerConnection
+	audio *webrtc.TrackRemote
+	video *webrtc.TrackRemote
+}
 
 type room struct {
 	users map[*websocket.Conn]*user

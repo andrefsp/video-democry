@@ -8,7 +8,7 @@ import { getMedia , assignStream } from './modules/media.js';
 const myVideo = document.querySelector('#yours'); 
 const joinButton = document.querySelector('#join');
 
-const addTransceiver = document.querySelector('#addTransceiver');
+const showTransceiver = document.querySelector('#showTransceiver');
 
 const joinDiv = document.querySelector('#join-div');
 const others = document.querySelector('#others');
@@ -23,6 +23,7 @@ let ws;                             // websocket connection
 let stream;                         // local stream
 let rtcConn;
 
+let tracks = new Array();
 
 function setJoinControls(payload) {
   joinDiv.style.display = "block";
@@ -31,20 +32,23 @@ function setJoinControls(payload) {
 async function drawRoom() {
 	others.innerHTML = "";
 
-	room.users.forEach(async (user, userID) => {
+  room.users.forEach(async (u, userID) => {
+    if (userID == user.id) {
+      return
+    }
 
 		var userDiv = document.createElement("div");
-		userDiv.setAttribute("id", "div-" + user.username);
+		userDiv.setAttribute("id", "div-" + u.username);
 
 		var userVideo = document.createElement("video")
 		userVideo.autoplay = true
     userVideo.controls = true
     userVideo.muted = true;
-		userVideo.setAttribute("id", "video-" + user.username)
+		userVideo.setAttribute("id", "video-" + u.username)
 		userDiv.appendChild(userVideo);
 
 		var newP = document.createElement("p");  
-		newP.innerText = user.username;
+		newP.innerText = u.username;
 		userDiv.appendChild(newP)
 
 		others.appendChild(userDiv);
@@ -107,6 +111,8 @@ async function startWS() {
         return await handleOffer(payload)
       case "out/answer":
         return await handleAnswer(payload)
+      case "out/negotiationneeded":
+        return await handleNegotiationNeeded(payload)
       case "out/ping":
         return await handlePing(payload)
       default:
@@ -138,24 +144,31 @@ async function getRTCPeerConnection() {
   
   conn.ontrack = async function (event) {
 		console.log("Track received: ", event);
-		room.addTrack(event);
-		drawRoom().then(assignTracks());
+    room.addTrack(event);
+    drawRoom().then(assignTracks());
   }
 
   conn.onnegotiationneeded = async function (event) {
-    console.log("Negotiation started. ", event);
-    sendOffer();
+    console.log("Negotiation needed.");
+    if (rtcConn.signalingState != "stable") {
+      console.log("     -- The connection isn't stable yet; postponing...")
+      return;
+    }
+
+    //console.log("Negotiation started: ", event);
+    //console.log("ICE connetion state:: ", conn.iceConnectionState);
+    //sendOffer();
   }
 
   return conn  
 }
 
-async function handleUserJoinEvent(payload) {
-  // room.addUser(payload.user);
-  // Redraw room
-  // console.log("User join: ", payload);
-  //
+async function handleNegotiationNeeded(payload) {
+  console.log("Server requested Offer renegotiation.")
+  sendOffer();
+}
 
+async function handleUserJoinEvent(payload) {
 	await room.addUserMulti(payload.roomUsers);
 	await drawRoom().then(assignTracks());
 }
@@ -173,6 +186,13 @@ async function handleICECandidate(payload) {
     console.log("Error adding ice candidate. ", e);
     return
   }
+}
+
+async function handleOffer(payload) {
+  console.log("Received Offer:: ", payload);
+  await rtcConn.setRemoteDescription(new RTCSessionDescription(payload.offer));
+  await sendAnswer();
+
 }
 
 async function handleAnswer(payload) {
@@ -201,13 +221,35 @@ async function sendOffer(e) {
   }));
   console.log("Offer was sent:: ", offer);
 } 
- 
+
+
+async function sendAnswer() {
+  let answer; 
+  try {
+    answer = await rtcConn.createAnswer();
+  } catch (err) {
+    console.log("error on answer::", err);
+    return
+  }
+
+  await rtcConn.setLocalDescription(answer);
+
+  ws.send(JSON.stringify({
+    uri: "in/answer",
+    fromUser: user,
+    answer: answer,
+  }));
+
+  console.log("Answer was sent:: ", answer);
+}
+
 async function joinCall(e) {
   // Upon adding tracks a negotiation process will be starting
-  
+
   console.log("Adding track to peer connection")
   stream.getTracks().forEach( track => rtcConn.addTrack(track, stream));
 
+  sendOffer();
 }
 
 async function handlePing(payload) {
@@ -224,9 +266,9 @@ async function start() {
   var userP = document.getElementById("yoursp");
   userP.innerHTML = `me ( ${user.username} )`;
 
-  addTransceiver.addEventListener('click', (e) => {
-    console.log("Adding transceiver");
-    rtcConn.addTransceiver('video');
+  showTransceiver.addEventListener('click', (e) => {
+    console.log(rtcConn.getTransceivers());
+    sendOffer();
   });
 
   joinButton.addEventListener('click', joinCall);

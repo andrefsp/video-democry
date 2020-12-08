@@ -2,37 +2,43 @@ package chap7
 
 import (
 	"log"
-	"time"
+	//	"sync"
+	//	"time"
 
-	"github.com/pion/rtcp"
+	//	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
 
-func CloneTrack(pc *webrtc.PeerConnection, targetTrack *webrtc.TrackLocalStaticRTP) func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
-	return func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
-		go func() {
-			ticker := time.NewTicker(3 * time.Second)
-			for range ticker.C {
-				//err := pc.WriteRTCP(
-				//	[]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(t.SSRC())}},
-				//)
-				//if err != nil {
-				//	log.Println("Error:: ", err.Error())
-				//}
+func (s *chap7Handler) subscribeTracks(tuser *user, subscriber *user) {
+	if tuser.audio == nil || tuser.video == nil {
+		log.Println("Target user is not yet streaming.")
+		return
+	}
 
-				err := pc.WriteRTCP(
-					[]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(t.SSRC())}},
-				)
-				if err != nil {
-					log.Println("Error:: ", err.Error())
-				}
+	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: "video/vp8"},
+		"video",
+		tuser.StreamID,
+	)
+	if err != nil {
+		log.Printf("Error: %s", err.Error())
+		panic(err)
+	}
 
-			}
-		}()
+	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: "audio/opus"},
+		"audio",
+		tuser.StreamID,
+	)
+	if err != nil {
+		log.Printf("Error: %s", err.Error())
+		panic(err)
+	}
 
+	writeRTP := func(sourceTrack *webrtc.TrackRemote, targetTrack *webrtc.TrackLocalStaticRTP) {
 		for {
 			// Read RTP packets being sent to Pion
-			rtp, readErr := t.ReadRTP()
+			rtp, readErr := sourceTrack.ReadRTP()
 			if readErr != nil {
 				panic(readErr)
 			}
@@ -41,4 +47,10 @@ func CloneTrack(pc *webrtc.PeerConnection, targetTrack *webrtc.TrackLocalStaticR
 			}
 		}
 	}
+
+	go writeRTP(tuser.audio, audioTrack)
+	go writeRTP(tuser.video, videoTrack)
+
+	subscriber.pc.AddTrack(videoTrack)
+	subscriber.pc.AddTrack(audioTrack)
 }

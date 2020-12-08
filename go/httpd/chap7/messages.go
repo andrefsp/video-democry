@@ -12,6 +12,11 @@ type message struct {
 	Uri string `json:"uri"`
 }
 
+type OutNegotiationNeeded struct {
+	Uri    string `json:"uri"`
+	ToUser *user  `json:"toUser"`
+}
+
 type InICECandidate struct {
 	FromUser  *user                   `json:"fromUser"`
 	Candidate webrtc.ICECandidateInit `json:"candidate"`
@@ -29,9 +34,9 @@ type InOffer struct {
 }
 
 type OutOffer struct {
-	Uri      string                    `json:"uri"`
-	FromUser *user                     `json:"fromUser"`
-	Offer    webrtc.SessionDescription `json:"offer"`
+	Uri    string                    `json:"uri"`
+	ToUser *user                     `json:"fromUser"`
+	Offer  webrtc.SessionDescription `json:"offer"`
 }
 
 type InAnswer struct {

@@ -5,7 +5,9 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 
 	"github.com/gorilla/mux"
@@ -21,17 +23,6 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// models
-type user struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	StreamID string `json:"streamID"`
-
-	pc *webrtc.PeerConnection
-}
-
-func (u *user) setPeerConnection() {}
-
 var rooms = sync.Map{}
 
 type chap7Handler struct {
@@ -41,6 +32,7 @@ type chap7Handler struct {
 func (s *chap7Handler) newPeerConnection() (*webrtc.PeerConnection, error) {
 	return webrtc.
 		NewPeerConnection(webrtc.Configuration{
+			SDPSemantics:       webrtc.SDPSemanticsUnifiedPlanWithFallback,
 			ICETransportPolicy: webrtc.ICETransportPolicyRelay,
 			ICEServers: []webrtc.ICEServer{
 				//{
@@ -84,76 +76,8 @@ func (s *chap7Handler) handleICECandidate(r *room, conn *websocket.Conn, message
 	return nil
 }
 
-func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload []byte) error {
-
-	om := InOffer{}
-	if err := json.Unmarshal(messagePayload, &om); err != nil {
-		return err
-	}
-
+func (s *chap7Handler) sendAnswer(r *room, conn *websocket.Conn) error {
 	user := r.getUser(conn)
-	log.Println("Offer received. ", user)
-
-	user.pc.OnICECandidate(func(c *webrtc.ICECandidate) {
-		if c == nil {
-			return
-		}
-		log.Println("Sending ICE candidate.")
-		s.sendMessage(conn, &OutICECandidate{
-			Uri:       "out/icecandidate",
-			ToUser:    user,
-			Candidate: c.ToJSON(),
-		})
-	})
-
-	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
-		webrtc.RTPCodecCapability{MimeType: "video/VP8"},
-		"video",
-		user.StreamID,
-	)
-	if err != nil {
-		log.Printf("Error: %s", err.Error())
-		panic(err)
-	}
-
-	videoTrack2, err := webrtc.NewTrackLocalStaticRTP(
-		webrtc.RTPCodecCapability{MimeType: "video/VP8"},
-		"video",
-		"anotherUserStream",
-	)
-	if err != nil {
-		log.Printf("Error: %s", err.Error())
-		panic(err)
-	}
-
-	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
-		webrtc.RTPCodecCapability{MimeType: "audio/OPUS"},
-		"audio",
-		user.StreamID,
-	)
-	if err != nil {
-		log.Printf("Error: %s", err.Error())
-		panic(err)
-	}
-
-	user.pc.AddTrack(videoTrack)
-	user.pc.AddTrack(videoTrack2)
-	user.pc.AddTrack(audioTrack)
-
-	user.pc.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
-		log.Println("Received track.")
-		if t.Kind().String() == "video" {
-			CloneTrack(user.pc, videoTrack)(t, r)
-		}
-		if t.Kind().String() == "audio" {
-			CloneTrack(user.pc, audioTrack)(t, r)
-		}
-	})
-
-	if err := user.pc.SetRemoteDescription(om.Offer); err != nil {
-		log.Print("Error: ", err.Error())
-		return err
-	}
 
 	// Answer and respond
 	answer, err := user.pc.CreateAnswer(nil)
@@ -172,6 +96,115 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		ToUser: user, // We are answering to the same user.
 		Answer: answer,
 	})
+
+	return nil
+}
+
+func (s *chap7Handler) handleAnswer(r *room, conn *websocket.Conn, messagePayload []byte) error {
+	user := r.getUser(conn)
+
+	om := InAnswer{}
+	if err := json.Unmarshal(messagePayload, &om); err != nil {
+		return err
+	}
+
+	if err := user.pc.SetRemoteDescription(om.Answer); err != nil {
+		log.Printf("Error: %s\n", err.Error())
+	}
+
+	return nil
+}
+
+func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload []byte) error {
+	user := r.getUser(conn)
+
+	om := InOffer{}
+	if err := json.Unmarshal(messagePayload, &om); err != nil {
+		return err
+	}
+
+	if user.pc.ConnectionState() != webrtc.PeerConnectionStateNew {
+		// Just reset the Status
+		if err := user.pc.SetRemoteDescription(om.Offer); err != nil {
+			log.Print("Error: ", err.Error())
+			return err
+		}
+		return s.sendAnswer(r, conn)
+	}
+
+	log.Println("ConnectionState:: ", user.pc.ConnectionState())
+
+	user.pc.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c == nil {
+			return
+		}
+		log.Println("Sending ICE candidate.")
+		s.sendMessage(conn, &OutICECandidate{
+			Uri:       "out/icecandidate",
+			ToUser:    user,
+			Candidate: c.ToJSON(),
+		})
+	})
+
+	user.pc.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
+		log.Printf("Received `%s` track.\n", t.Kind().String())
+		go func() {
+			ticker := time.NewTicker(3 * time.Second)
+			for range ticker.C {
+				writeErr := user.pc.WriteRTCP([]rtcp.Packet{
+					&rtcp.PictureLossIndication{
+						MediaSSRC: uint32(t.SSRC()),
+					},
+				})
+				if writeErr != nil {
+					log.Println(writeErr)
+				}
+				// Send a remb message with a very high bandwidth to trigger chrome to send also the high bitrate stream
+				writeErr = user.pc.WriteRTCP([]rtcp.Packet{
+					&rtcp.ReceiverEstimatedMaximumBitrate{
+						Bitrate:    10000000,
+						SenderSSRC: uint32(t.SSRC()),
+					}})
+				if writeErr != nil {
+					log.Println(writeErr)
+				}
+			}
+		}()
+
+		if t.Kind().String() == "video" {
+			user.video = t
+			return
+		}
+		if t.Kind().String() == "audio" {
+			user.audio = t
+		}
+	})
+
+	user.pc.OnNegotiationNeeded(func() {
+		log.Printf("User requiring negotiation %s \n", user.Username)
+
+		s.sendMessage(conn, &OutNegotiationNeeded{
+			Uri:    "out/negotiationneeded",
+			ToUser: user,
+		})
+	})
+
+	if err := user.pc.SetRemoteDescription(om.Offer); err != nil {
+		log.Print("Error: ", err.Error())
+		return err
+	}
+
+	s.sendAnswer(r, conn)
+
+	for _, ruser := range r.getUserList() {
+		if ruser.ID == user.ID {
+			continue
+		}
+
+		s.subscribeTracks(ruser, user)
+	}
+
+	log.Printf("Offer received from: %+v\n", user)
 
 	return nil
 }
@@ -248,6 +281,7 @@ func (s *chap7Handler) handleConnection(roomID string, conn *websocket.Conn) {
 		case "in/offer":
 			s.handleOffer(room, conn, messagePayload)
 		case "in/answer":
+			s.handleAnswer(room, conn, messagePayload)
 		case "in/pong":
 		default:
 			s.sendMessage(conn, &InfoMessage{
