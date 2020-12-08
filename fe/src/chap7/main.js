@@ -38,17 +38,17 @@ async function drawRoom() {
     }
 
 		var userDiv = document.createElement("div");
-		userDiv.setAttribute("id", "div-" + u.username);
+		userDiv.setAttribute("id", "div-" + u.id);
 
 		var userVideo = document.createElement("video")
 		userVideo.autoplay = true
     userVideo.controls = true
     userVideo.muted = true;
-		userVideo.setAttribute("id", "video-" + u.username)
+		userVideo.setAttribute("id", "video-" + u.id)
 		userDiv.appendChild(userVideo);
 
 		var newP = document.createElement("p");  
-		newP.innerText = u.username;
+		newP.innerText = u.id;
 		userDiv.appendChild(newP)
 
 		others.appendChild(userDiv);
@@ -63,7 +63,7 @@ async function assignTracks() {
 		}
 
 		tracks.forEach(async (track, _) => {
-    	var targetVideo = document.getElementById("video-" + user.username);
+    	var targetVideo = document.getElementById("video-" + user.id);
 			await assignStream(targetVideo, track.streams[0]);
 		});
 
@@ -264,7 +264,7 @@ async function start() {
   await setupLocalSession();
 
   var userP = document.getElementById("yoursp");
-  userP.innerHTML = `me ( ${user.username} )`;
+  userP.innerHTML = `me ( ${user.id} )`;
 
   showTransceiver.addEventListener('click', (e) => {
     console.log(rtcConn.getTransceivers());

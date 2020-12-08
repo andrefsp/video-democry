@@ -104,7 +104,6 @@ func (r *room) handleStreamSubscriptions() {
 			if publisher.ID == subscriber.ID {
 				continue
 			}
-			log.Println(publisher.Username, " :: ", subscriber.Username)
 			r.subscribeTracks(publisher, subscriber)
 		}
 	}
