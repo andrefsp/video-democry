@@ -1,6 +1,8 @@
 package chap7
 
 import (
+	"log"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -13,6 +15,8 @@ type user struct {
 	Username string `json:"username"`
 	StreamID string `json:"streamID"`
 
+	subscribers map[string]struct{}
+
 	pc    *webrtc.PeerConnection
 	audio *webrtc.TrackRemote
 	video *webrtc.TrackRemote
@@ -21,8 +25,89 @@ type user struct {
 type room struct {
 	users map[*websocket.Conn]*user
 
+	subscriptionMutex sync.Mutex
+
 	ticker   <-chan time.Time
 	stopChan chan struct{}
+}
+
+func (r *room) subscribeTracks(publisher *user, subscriber *user) error {
+	r.subscriptionMutex.Lock()
+	defer r.subscriptionMutex.Unlock()
+
+	if _, subscribed := publisher.subscribers[subscriber.ID]; subscribed {
+		log.Println("User already subscribed")
+		return nil
+	}
+
+	if publisher.ID == subscriber.ID {
+		log.Println("Cannot subscribe to self.")
+		return nil
+	}
+
+	if publisher.audio == nil || publisher.video == nil {
+		log.Printf("`%s` user is not yet streaming.", publisher.ID)
+		return nil
+	}
+
+	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: "video/vp8"},
+		"video",
+		publisher.StreamID,
+	)
+	if err != nil {
+		log.Printf("Error: %s", err.Error())
+		return err
+	}
+
+	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: "audio/opus"},
+		"audio",
+		publisher.StreamID,
+	)
+	if err != nil {
+		log.Printf("Error: %s\n", err.Error())
+		return err
+	}
+
+	writeRTP := func(sourceTrack *webrtc.TrackRemote, targetTrack *webrtc.TrackLocalStaticRTP) {
+		for {
+			// Read RTP packets being sent to Pion
+			rtp, readErr := sourceTrack.ReadRTP()
+			if readErr != nil {
+				panic(readErr)
+			}
+			if writeErr := targetTrack.WriteRTP(rtp); writeErr != nil {
+				panic(writeErr)
+			}
+		}
+	}
+
+	go writeRTP(publisher.audio, audioTrack)
+	go writeRTP(publisher.video, videoTrack)
+
+	if _, err = subscriber.pc.AddTrack(videoTrack); err != nil {
+		return err
+	}
+	if _, err = subscriber.pc.AddTrack(audioTrack); err != nil {
+		return err
+	}
+
+	publisher.subscribers[subscriber.ID] = struct{}{}
+
+	return nil
+}
+
+func (r *room) handleStreamSubscriptions() {
+	for _, publisher := range r.getUserList() {
+		for _, subscriber := range r.getUserList() {
+			if publisher.ID == subscriber.ID {
+				continue
+			}
+			log.Println(publisher.Username, " :: ", subscriber.Username)
+			r.subscribeTracks(publisher, subscriber)
+		}
+	}
 }
 
 func (r *room) stop() {

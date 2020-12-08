@@ -146,7 +146,7 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		})
 	})
 
-	user.pc.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
+	user.pc.OnTrack(func(t *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
 		log.Printf("Received `%s` track.\n", t.Kind().String())
 		go func() {
 			ticker := time.NewTicker(3 * time.Second)
@@ -171,6 +171,9 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 			}
 		}()
 
+		// Handle stream subscriptions
+		defer r.handleStreamSubscriptions()
+
 		if t.Kind().String() == "video" {
 			user.video = t
 			return
@@ -178,6 +181,7 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		if t.Kind().String() == "audio" {
 			user.audio = t
 		}
+
 	})
 
 	user.pc.OnNegotiationNeeded(func() {
@@ -195,16 +199,6 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 	}
 
 	s.sendAnswer(r, conn)
-
-	for _, ruser := range r.getUserList() {
-		if ruser.ID == user.ID {
-			continue
-		}
-
-		s.subscribeTracks(ruser, user)
-	}
-
-	log.Printf("Offer received from: %+v\n", user)
 
 	return nil
 }
@@ -224,6 +218,7 @@ func (s *chap7Handler) handleUserJoin(r *room, conn *websocket.Conn, payload []b
 		panic(err)
 	}
 	user.pc = pc
+	user.subscribers = map[string]struct{}{}
 
 	r.addUser(conn, user)
 
