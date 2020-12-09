@@ -38,8 +38,11 @@ type user struct {
 }
 
 func (u *user) stop() {
+	log.Println("User:: ", u)
 	u.stopped = true
-	u.pc.Close()
+	if u.pc != nil {
+		u.pc.Close()
+	}
 }
 
 func (u *user) sendRemb(t *webrtc.TrackRemote) {
@@ -262,7 +265,8 @@ func newUser(u *user) *user {
 }
 
 type room struct {
-	users map[*websocket.Conn]*user
+	usersMutex sync.RWMutex
+	users      map[*websocket.Conn]*user
 
 	ticker   <-chan time.Time
 	stopChan chan struct{}
@@ -304,15 +308,26 @@ func (r *room) start() {
 }
 
 func (r *room) getUser(conn *websocket.Conn) *user {
+	r.usersMutex.RLock()
+	defer r.usersMutex.RUnlock()
+
 	return r.users[conn]
 }
 
 func (r *room) addUser(conn *websocket.Conn, user *user) *user {
+	r.usersMutex.Lock()
+	defer r.usersMutex.Unlock()
+
 	r.users[conn] = user
 	return user
 }
 
-func (r *room) removeUser(conn *websocket.Conn, user *user) *user {
+func (r *room) removeUser(conn *websocket.Conn) *user {
+	user := r.getUser(conn)
+	if user == nil {
+		return user
+	}
+
 	// Must unsubscribe from tracks.
 	for _, publisher := range r.getUserList() {
 		if publisher.ID == user.ID {
@@ -323,6 +338,9 @@ func (r *room) removeUser(conn *websocket.Conn, user *user) *user {
 		}
 	}
 
+	r.usersMutex.Lock()
+	defer r.usersMutex.Unlock()
+
 	user = r.users[conn]
 	user.stop()
 
@@ -332,6 +350,9 @@ func (r *room) removeUser(conn *websocket.Conn, user *user) *user {
 }
 
 func (r *room) getUserList() []*user {
+	r.usersMutex.RLock()
+	defer r.usersMutex.RUnlock()
+
 	users := []*user{}
 	for p := range r.users {
 		users = append(users, r.users[p])

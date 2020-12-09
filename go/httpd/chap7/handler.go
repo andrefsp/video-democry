@@ -216,8 +216,7 @@ func (s *chap7Handler) handleUserJoin(r *room, conn *websocket.Conn, payload []b
 func (s *chap7Handler) handleDisconnection(r *room, conn *websocket.Conn) {
 	eventURI := "out/user-left"
 
-	user := r.getUser(conn)
-	r.removeUser(conn, user)
+	user := r.removeUser(conn)
 
 	for uconn := range r.users {
 		s.sendMessage(uconn, &OutUserEventMessage{

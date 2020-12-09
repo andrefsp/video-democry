@@ -8,9 +8,6 @@ import { getMedia , assignStream } from './modules/media.js';
 const myVideo = document.querySelector('#yours'); 
 const joinButton = document.querySelector('#join');
 
-const showTransceiver = document.querySelector('#showTransceiver');
-const addTransceiver = document.querySelector('#addTransceiver');
-
 const joinDiv = document.querySelector('#join-div');
 const others = document.querySelector('#others');
 
@@ -26,8 +23,22 @@ let rtcConn;
 
 let tracks = new Array();
 
-function setJoinControls(payload) {
-  joinDiv.style.display = "block";
+function setJoinControls(state) {
+    switch(state) {
+      case "connected":
+        // The connection has become fully connected
+        joinDiv.style.display = "none";
+        break;
+      case "disconnected":
+        joinDiv.style.display = "block";
+        break;
+      case "failed":
+        joinDiv.style.display = "block";
+        break;
+      case "closed":
+          joinDiv.style.display = "block";
+        break;
+    } 
 }
 
 async function drawRoom() {
@@ -131,7 +142,11 @@ async function getRTCPeerConnection() {
   
   let conn = new RTCPeerConnection(rtcConf);
 
-  conn.onicecandidate = function (event) {
+  conn.onconnectionstatechange = async function(event) {
+    await setJoinControls(conn.connectionState);
+  }
+
+  conn.onicecandidate = async function (event) {
     if (!event.candidate) {
       return 
     } 
@@ -158,7 +173,7 @@ async function getRTCPeerConnection() {
 
     //console.log("Negotiation started: ", event);
     //console.log("ICE connetion state:: ", conn.iceConnectionState);
-    //sendOffer();
+    sendOffer();
   }
 
   return conn  
@@ -267,20 +282,8 @@ async function start() {
   var userP = document.getElementById("yoursp");
   userP.innerHTML = `me ( ${user.id} )`;
 
-  showTransceiver.addEventListener('click', (e) => {
-    console.log(rtcConn.getTransceivers());
-    sendOffer();
-  });
-
-  addTransceiver.addEventListener('click', (e) => {
-    console.log(rtcConn.getTransceivers());
-    rtc.addTransceiver('video');
-    rtc.addTransceiver('audio');
-  });
-
 
   joinButton.addEventListener('click', joinCall);
-  await setJoinControls();
 
   console.log(ws);
   ws.send(JSON.stringify({
