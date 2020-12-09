@@ -5,9 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"time"
 
-	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 
 	"github.com/gorilla/mux"
@@ -22,6 +20,8 @@ var upgrader = websocket.Upgrader{
 		return true
 	},
 }
+
+var messageMutex = sync.Mutex{}
 
 var rooms = sync.Map{}
 
@@ -48,6 +48,9 @@ func (s *chap7Handler) newPeerConnection() (*webrtc.PeerConnection, error) {
 }
 
 func (s *chap7Handler) sendMessage(conn *websocket.Conn, payload interface{}) error {
+	messageMutex.Lock()
+	defer messageMutex.Unlock()
+
 	jData, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -123,6 +126,8 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		return err
 	}
 
+	log.Printf("ConnectionState from user %s :: %s\n", user.ID, user.pc.ConnectionState())
+
 	if user.pc.ConnectionState() != webrtc.PeerConnectionStateNew {
 		// Just reset the Status
 		if err := user.pc.SetRemoteDescription(om.Offer); err != nil {
@@ -132,13 +137,11 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		return s.sendAnswer(r, conn)
 	}
 
-	log.Println("ConnectionState:: ", user.pc.ConnectionState())
-
 	user.pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
 			return
 		}
-		log.Println("Sending ICE candidate.")
+		log.Printf("Sending ICE candidate to %s\n", user.ID)
 		s.sendMessage(conn, &OutICECandidate{
 			Uri:       "out/icecandidate",
 			ToUser:    user,
@@ -148,28 +151,6 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 
 	user.pc.OnTrack(func(t *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
 		log.Printf("Received `%s` track.\n", t.Kind().String())
-		go func() {
-			ticker := time.NewTicker(3 * time.Second)
-			for range ticker.C {
-				writeErr := user.pc.WriteRTCP([]rtcp.Packet{
-					&rtcp.PictureLossIndication{
-						MediaSSRC: uint32(t.SSRC()),
-					},
-				})
-				if writeErr != nil {
-					log.Println(writeErr)
-				}
-				// Send a remb message with a very high bandwidth to trigger chrome to send also the high bitrate stream
-				writeErr = user.pc.WriteRTCP([]rtcp.Packet{
-					&rtcp.ReceiverEstimatedMaximumBitrate{
-						Bitrate:    10000000,
-						SenderSSRC: uint32(t.SSRC()),
-					}})
-				if writeErr != nil {
-					log.Println(writeErr)
-				}
-			}
-		}()
 
 		// Handle stream subscriptions
 		defer r.handleStreamSubscriptions()
@@ -184,11 +165,10 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 			user.addAudioTrack(t)
 			return
 		}
-
 	})
 
 	user.pc.OnNegotiationNeeded(func() {
-		log.Printf("Requesting ICE negotiation to %s \n", user.Username)
+		log.Printf("Requesting ICE negotiation to %s \n", user.ID)
 
 		s.sendMessage(conn, &OutNegotiationNeeded{
 			Uri:    "out/negotiationneeded",
@@ -284,7 +264,6 @@ func (s *chap7Handler) handleConnection(roomID string, conn *websocket.Conn) {
 			s.sendMessage(conn, &InfoMessage{
 				Uri: "out/error", Message: "Message uri not recognized",
 			})
-
 			log.Println("No handler for message type: ", m.Uri)
 		}
 	}

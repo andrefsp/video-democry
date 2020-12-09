@@ -9,6 +9,7 @@ const myVideo = document.querySelector('#yours');
 const joinButton = document.querySelector('#join');
 
 const showTransceiver = document.querySelector('#showTransceiver');
+const addTransceiver = document.querySelector('#addTransceiver');
 
 const joinDiv = document.querySelector('#join-div');
 const others = document.querySelector('#others');
@@ -205,7 +206,7 @@ async function sendOffer(e) {
 
   try {
     offer = await rtcConn.createOffer({
-      offerToReceiveAudio: 1, offerToReceiveVideo: 1  
+      offerToReceiveAudio: 1, offerToReceiveVideo: 1 //, iceRestart: true 
     })
   } catch (err) {
     console.log("error on offer ::", err);
@@ -270,6 +271,13 @@ async function start() {
     console.log(rtcConn.getTransceivers());
     sendOffer();
   });
+
+  addTransceiver.addEventListener('click', (e) => {
+    console.log(rtcConn.getTransceivers());
+    rtc.addTransceiver('video');
+    rtc.addTransceiver('audio');
+  });
+
 
   joinButton.addEventListener('click', joinCall);
   await setJoinControls();
