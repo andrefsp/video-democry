@@ -175,17 +175,20 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		defer r.handleStreamSubscriptions()
 
 		if t.Kind().String() == "video" {
-			user.video = t
+			//user.video = t
+			user.addVideoTrack(t)
 			return
 		}
 		if t.Kind().String() == "audio" {
-			user.audio = t
+			//user.audio = t
+			user.addAudioTrack(t)
+			return
 		}
 
 	})
 
 	user.pc.OnNegotiationNeeded(func() {
-		log.Printf("User requiring negotiation %s \n", user.Username)
+		log.Printf("Requesting ICE negotiation to %s \n", user.Username)
 
 		s.sendMessage(conn, &OutNegotiationNeeded{
 			Uri:    "out/negotiationneeded",
@@ -211,14 +214,13 @@ func (s *chap7Handler) handleUserJoin(r *room, conn *websocket.Conn, payload []b
 		panic(err)
 	}
 
-	user := message.User
+	user := newUser(message.User)
 	pc, err := s.newPeerConnection()
 	if err != nil {
 		log.Print("Error creating Peer connection: ", err.Error())
 		panic(err)
 	}
 	user.pc = pc
-	user.subscribers = map[string]struct{}{}
 
 	r.addUser(conn, user)
 

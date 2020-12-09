@@ -9,51 +9,81 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
+type subscriberTracks struct {
+	audioTrack *webrtc.TrackLocalStaticRTP
+	videoTrack *webrtc.TrackLocalStaticRTP
+}
+
 // models
 type user struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
 	StreamID string `json:"streamID"`
 
-	subscribers map[string]struct{}
+	subscribersMutex sync.RWMutex
+	subscribers      map[string]*subscriberTracks
 
 	pc    *webrtc.PeerConnection
 	audio *webrtc.TrackRemote
 	video *webrtc.TrackRemote
+
+	startVideoBrodcast chan struct{}
+	startAudioBrodcast chan struct{}
 }
 
-type room struct {
-	users map[*websocket.Conn]*user
-
-	subscriptionMutex sync.Mutex
-
-	ticker   <-chan time.Time
-	stopChan chan struct{}
+func (u *user) addVideoTrack(video *webrtc.TrackRemote) {
+	u.video = video
+	u.startVideoBrodcast <- struct{}{}
 }
 
-func (r *room) subscribeTracks(publisher *user, subscriber *user) error {
-	r.subscriptionMutex.Lock()
-	defer r.subscriptionMutex.Unlock()
+func (u *user) addAudioTrack(audio *webrtc.TrackRemote) {
+	u.audio = audio
+	u.startAudioBrodcast <- struct{}{}
+}
 
-	if _, subscribed := publisher.subscribers[subscriber.ID]; subscribed {
-		log.Println("User already subscribed")
-		return nil
+func (u *user) broadcastAudio() {
+	<-u.startAudioBrodcast
+	for {
+		// Read RTP packets being sent to Pion
+		rtp, readErr := u.audio.ReadRTP()
+		if readErr != nil {
+			panic(readErr)
+		}
+
+		for id := range u.subscribers {
+			if writeErr := u.subscribers[id].audioTrack.WriteRTP(rtp); writeErr != nil {
+				panic(writeErr)
+			}
+		}
 	}
+}
 
-	if publisher.ID == subscriber.ID {
-		log.Println("Cannot subscribe to self.")
-		return nil
+func (u *user) broadcastVideo() {
+	<-u.startVideoBrodcast
+	for {
+		// Read RTP packets being sent to Pion
+		rtp, readErr := u.video.ReadRTP()
+		if readErr != nil {
+			panic(readErr)
+		}
+		for id := range u.subscribers {
+			if writeErr := u.subscribers[id].videoTrack.WriteRTP(rtp); writeErr != nil {
+				panic(writeErr)
+			}
+		}
 	}
+}
 
-	if publisher.audio == nil || publisher.video == nil {
-		log.Printf("`%s` user is not yet streaming.", publisher.ID)
+func (u *user) addSubscriber(subscriber *user) error {
+
+	if u.hasSubscriber(subscriber) {
 		return nil
 	}
 
 	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: "video/vp8"},
 		"video",
-		publisher.StreamID,
+		u.StreamID,
 	)
 	if err != nil {
 		log.Printf("Error: %s", err.Error())
@@ -63,37 +93,80 @@ func (r *room) subscribeTracks(publisher *user, subscriber *user) error {
 	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: "audio/opus"},
 		"audio",
-		publisher.StreamID,
+		u.StreamID,
 	)
 	if err != nil {
 		log.Printf("Error: %s\n", err.Error())
 		return err
 	}
 
-	writeRTP := func(sourceTrack *webrtc.TrackRemote, targetTrack *webrtc.TrackLocalStaticRTP) {
-		for {
-			// Read RTP packets being sent to Pion
-			rtp, readErr := sourceTrack.ReadRTP()
-			if readErr != nil {
-				panic(readErr)
-			}
-			if writeErr := targetTrack.WriteRTP(rtp); writeErr != nil {
-				panic(writeErr)
-			}
-		}
+	u.subscribersMutex.Lock()
+	u.subscribers[subscriber.ID] = &subscriberTracks{
+		audioTrack: audioTrack,
+		videoTrack: videoTrack,
+	}
+	u.subscribersMutex.Unlock()
+
+	// Must add the tracks to the subscriber
+	subscriber.pc.AddTrack(audioTrack)
+	subscriber.pc.AddTrack(videoTrack)
+
+	return nil
+}
+
+func (u *user) hasSubscriber(subscriber *user) bool {
+	u.subscribersMutex.RLock()
+	defer u.subscribersMutex.RUnlock()
+	_, subscribed := u.subscribers[subscriber.ID]
+
+	return subscribed
+}
+
+func newUser(u *user) *user {
+	newUser := &user{
+		ID:       u.ID,
+		Username: u.Username,
+		StreamID: u.StreamID,
+
+		subscribersMutex: sync.RWMutex{},
+		subscribers:      map[string]*subscriberTracks{},
+
+		startVideoBrodcast: make(chan struct{}),
+		startAudioBrodcast: make(chan struct{}),
 	}
 
-	go writeRTP(publisher.audio, audioTrack)
-	go writeRTP(publisher.video, videoTrack)
+	go newUser.broadcastAudio()
+	go newUser.broadcastVideo()
 
-	if _, err = subscriber.pc.AddTrack(videoTrack); err != nil {
+	return newUser
+}
+
+type room struct {
+	users map[*websocket.Conn]*user
+
+	ticker   <-chan time.Time
+	stopChan chan struct{}
+}
+
+func (r *room) subscribeTracks(publisher *user, subscriber *user) error {
+	if publisher.ID == subscriber.ID {
+		return nil
+	}
+
+	if publisher.hasSubscriber(subscriber) {
+		log.Println("User already subscribed")
+		return nil
+	}
+
+	if publisher.audio == nil || publisher.video == nil {
+		log.Printf("`%s` user is not yet streaming.", publisher.ID)
+		return nil
+	}
+
+	if err := publisher.addSubscriber(subscriber); err != nil {
+		log.Print("Error: ", err.Error())
 		return err
 	}
-	if _, err = subscriber.pc.AddTrack(audioTrack); err != nil {
-		return err
-	}
-
-	publisher.subscribers[subscriber.ID] = struct{}{}
 
 	return nil
 }
