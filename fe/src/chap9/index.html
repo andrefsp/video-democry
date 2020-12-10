@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>WebRTCP chapter 9</title>
+        <style>
+          video {
+            background: black;
+            border: 1px solid gray;
+            width: 240px;
+            height: 160px;
+          }
+
+          .grayscale {
+            -webkit-filter: grayscale(1);
+            -moz-filter: grayscale(1);
+            -ms-filter: grayscale(1);
+            -o-filter: grayscale(1);
+            filter: grayscale(1);
+          }
+
+          .sepia {
+            -webkit-filter: sepia(1);
+            -moz-filter: sepia(1);
+            -ms-filter: sepia(1);
+            -o-filter: sepia(1);
+            filter: sepia(1);
+          }
+
+          #join-div {
+            display: block;
+          }
+
+        </style>
+    </head>
+    <body>
+      <hr></hr>     
+
+      <div id="myself">
+        <video id="yours" controls muted autoplay></video>
+        <p id="yoursp"></p>
+        <div id="join-div">
+          <button id="join">join</button>
+        </div>
+      </div>
+
+      <hr></hr>     
+
+      <div id="others">
+      </div>
+      
+      <hr></hr>     
+      <script src="https://webrtc.github.io/adapter/adapter-7.4.0.js"></script>
+      <script type=module src="main.js"></script>
+    </body>
+</html>
