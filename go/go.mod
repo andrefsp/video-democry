@@ -10,7 +10,7 @@ require (
 	github.com/lucas-clemente/quic-go v0.19.2 // indirect
 	github.com/marten-seemann/chacha20 v0.2.0 // indirect
 	github.com/pion/ice/v2 v2.0.13 // indirect
-	github.com/pion/rtcp v1.2.4
+	github.com/pion/rtcp v1.2.6
 	github.com/pion/sdp/v2 v2.4.0 // indirect
 	github.com/pion/transport v0.11.1 // indirect
 	github.com/pion/turn v1.4.0 // indirect
