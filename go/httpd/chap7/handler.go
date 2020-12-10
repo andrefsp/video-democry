@@ -32,12 +32,12 @@ type chap7Handler struct {
 func (s *chap7Handler) newPeerConnection() (*webrtc.PeerConnection, error) {
 	return webrtc.
 		NewPeerConnection(webrtc.Configuration{
-			SDPSemantics:       webrtc.SDPSemanticsUnifiedPlanWithFallback,
+			//SDPSemantics:       webrtc.SDPSemanticsUnifiedPlanWithFallback,
 			ICETransportPolicy: webrtc.ICETransportPolicyRelay,
 			ICEServers: []webrtc.ICEServer{
-				//{
-				//	URLs: []string{"stun:stun.l.google.com:19302"},
-				//},
+				{
+					URLs: []string{"stun:stun.l.google.com:19302"},
+				},
 				{
 					URLs:       []string{s.cfg.TurnServerAddr},
 					Credential: "thiskey",

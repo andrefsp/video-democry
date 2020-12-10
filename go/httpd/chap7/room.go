@@ -46,10 +46,10 @@ func (u *user) stop() {
 	}
 }
 
-func (u *user) sendRemb(t *webrtc.TrackRemote) {
+func (u *user) sendPLI(t *webrtc.TrackRemote) {
 	ticker := time.NewTicker(3 * time.Second)
 	for range ticker.C {
-		if u.stopped || u.pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
+		if u.stopped {
 			return
 		}
 		if u.pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
@@ -77,7 +77,7 @@ func (u *user) sendRemb(t *webrtc.TrackRemote) {
 }
 
 func (u *user) addVideoTrack(video *webrtc.TrackRemote) error {
-	go u.sendRemb(video)
+	go u.sendPLI(video)
 
 	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: "video/vp8"},
@@ -97,7 +97,7 @@ func (u *user) addVideoTrack(video *webrtc.TrackRemote) error {
 }
 
 func (u *user) addAudioTrack(audio *webrtc.TrackRemote) error {
-	go u.sendRemb(audio)
+	go u.sendPLI(audio)
 
 	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: "audio/opus"},

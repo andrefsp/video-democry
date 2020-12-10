@@ -114,9 +114,9 @@ async function startWS() {
     let payload = JSON.parse(event.data);
     switch (payload.uri) {
       case "out/user-join":
-        return handleUserJoinEvent(payload)
+        return await handleUserJoinEvent(payload)
       case "out/user-left":
-        return handleUserLeftEvent(payload)
+        return await handleUserLeftEvent(payload)
       case "out/icecandidate":
         return await handleICECandidate(payload)
       case "out/offer":
@@ -151,7 +151,7 @@ async function getRTCPeerConnection() {
       return 
     } 
     // Broadcast ICE candidates to all users 
-    ws.send(JSON.stringify({
+    await ws.send(JSON.stringify({
       uri: "in/icecandidate",
       fromUser: user,
       candidate: event.candidate,
@@ -180,7 +180,7 @@ async function getRTCPeerConnection() {
 }
 
 async function handleNegotiationNeeded(payload) {
-  console.log("Server requested Offer renegotiation.")
+  console.log("Server requested ICE renegotiation.")
   sendOffer();
 }
 
@@ -221,7 +221,7 @@ async function sendOffer(e) {
 
   try {
     offer = await rtcConn.createOffer({
-      offerToReceiveAudio: 1, offerToReceiveVideo: 1 //, iceRestart: true 
+      offerToReceiveAudio: 1, offerToReceiveVideo: 1, iceRestart: true 
     })
   } catch (err) {
     console.log("error on offer ::", err);
@@ -230,7 +230,7 @@ async function sendOffer(e) {
 
   await rtcConn.setLocalDescription(offer);
 
-  ws.send(JSON.stringify({
+  await ws.send(JSON.stringify({
     uri: "in/offer",
     fromUser: user,
     offer: offer,
@@ -250,7 +250,7 @@ async function sendAnswer() {
 
   await rtcConn.setLocalDescription(answer);
 
-  ws.send(JSON.stringify({
+  await ws.send(JSON.stringify({
     uri: "in/answer",
     fromUser: user,
     answer: answer,
@@ -260,16 +260,15 @@ async function sendAnswer() {
 }
 
 async function joinCall(e) {
-  // Upon adding tracks a negotiation process will be starting
 
   console.log("Adding track to peer connection")
+  
+  // Upon adding tracks a negotiation process will be starting
   stream.getTracks().forEach( track => rtcConn.addTrack(track, stream));
-
-  sendOffer();
 }
 
 async function handlePing(payload) {
-  ws.send(JSON.stringify({
+  await ws.send(JSON.stringify({
       uri: "in/pong",
   }));
 }
@@ -279,17 +278,16 @@ async function start() {
   await startWS();
   await setupLocalSession();
 
-  var userP = document.getElementById("yoursp");
-  userP.innerHTML = `me ( ${user.id} )`;
-
-
-  joinButton.addEventListener('click', joinCall);
-
-  console.log(ws);
+  //console.log(ws);
   ws.send(JSON.stringify({
     uri: "in/join",
     user: user,
-  }))
+  }));
+
+  var userP = document.getElementById("yoursp");
+  userP.innerHTML = `me ( ${user.id} )`;
+
+  joinButton.addEventListener('click', joinCall);
 }
 
 start();
