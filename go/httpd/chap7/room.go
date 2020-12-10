@@ -10,10 +10,7 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-type subscriberTracks struct {
-	audioTrack *webrtc.TrackLocalStaticRTP
-	videoTrack *webrtc.TrackLocalStaticRTP
-
+type subscriberRTPSenders struct {
 	videoRTPSender *webrtc.RTPSender
 	audioRTPSender *webrtc.RTPSender
 }
@@ -25,11 +22,15 @@ type user struct {
 	StreamID string `json:"streamID"`
 
 	subscribersMutex sync.RWMutex
-	subscribers      map[string]*subscriberTracks
+	subscribers      map[string]*subscriberRTPSenders
 
-	pc    *webrtc.PeerConnection
-	audio *webrtc.TrackRemote
-	video *webrtc.TrackRemote
+	pc *webrtc.PeerConnection
+
+	audioInTrack *webrtc.TrackRemote
+	videoInTrack *webrtc.TrackRemote
+
+	audioOutTrack *webrtc.TrackLocalStaticRTP
+	videoOutTrack *webrtc.TrackLocalStaticRTP
 
 	startVideoBrodcast chan struct{}
 	startAudioBrodcast chan struct{}
@@ -50,6 +51,9 @@ func (u *user) sendRemb(t *webrtc.TrackRemote) {
 	for range ticker.C {
 		if u.stopped || u.pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
 			return
+		}
+		if u.pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
+			continue
 		}
 
 		writeErr := u.pc.WriteRTCP([]rtcp.Packet{
@@ -72,72 +76,8 @@ func (u *user) sendRemb(t *webrtc.TrackRemote) {
 	}
 }
 
-func (u *user) addVideoTrack(video *webrtc.TrackRemote) {
+func (u *user) addVideoTrack(video *webrtc.TrackRemote) error {
 	go u.sendRemb(video)
-
-	u.video = video
-	u.startVideoBrodcast <- struct{}{}
-}
-
-func (u *user) addAudioTrack(audio *webrtc.TrackRemote) {
-	go u.sendRemb(audio)
-
-	u.audio = audio
-	u.startAudioBrodcast <- struct{}{}
-}
-
-func (u *user) broadcastAudio() {
-	<-u.startAudioBrodcast
-	for {
-		if u.stopped {
-			return
-		}
-		// Read RTP packets being sent to Pion
-		rtp, err := u.audio.ReadRTP()
-		if err != nil {
-			log.Printf("Error: %s\n", err.Error())
-			return
-		}
-
-		u.subscribersMutex.RLock()
-		for id := range u.subscribers {
-			if writeErr := u.subscribers[id].audioTrack.WriteRTP(rtp); writeErr != nil {
-				panic(writeErr)
-			}
-		}
-		u.subscribersMutex.RUnlock()
-	}
-}
-
-func (u *user) broadcastVideo() {
-	<-u.startVideoBrodcast
-	for {
-		if u.stopped {
-			return
-		}
-
-		// Read RTP packets being sent to Pion
-		rtp, err := u.video.ReadRTP()
-		if err != nil {
-			log.Printf("Error: %s\n", err.Error())
-			return
-		}
-
-		u.subscribersMutex.RLock()
-		for id := range u.subscribers {
-			if writeErr := u.subscribers[id].videoTrack.WriteRTP(rtp); writeErr != nil {
-				panic(writeErr)
-			}
-		}
-		u.subscribersMutex.RUnlock()
-	}
-}
-
-func (u *user) addSubscriber(subscriber *user) error {
-
-	if u.hasSubscriber(subscriber) {
-		return nil
-	}
 
 	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: "video/vp8"},
@@ -149,6 +89,16 @@ func (u *user) addSubscriber(subscriber *user) error {
 		return err
 	}
 
+	u.videoOutTrack = videoTrack
+	u.videoInTrack = video
+	u.startVideoBrodcast <- struct{}{}
+
+	return nil
+}
+
+func (u *user) addAudioTrack(audio *webrtc.TrackRemote) error {
+	go u.sendRemb(audio)
+
 	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: "audio/opus"},
 		"audio",
@@ -159,41 +109,99 @@ func (u *user) addSubscriber(subscriber *user) error {
 		return err
 	}
 
-	// Must add the tracks to the subscriber
-	audioRTPSender, err := subscriber.pc.AddTrack(audioTrack)
-	if err != nil {
-		log.Printf("Error: %s\n", err.Error())
-		return err
-	}
+	u.audioOutTrack = audioTrack
+	u.audioInTrack = audio
+	u.startAudioBrodcast <- struct{}{}
 
-	videoRTPSender, err := subscriber.pc.AddTrack(videoTrack)
-	if err != nil {
-		log.Printf("Error: %s\n", err.Error())
-		return err
+	return nil
+}
+
+func (u *user) broadcastAudio() {
+	<-u.startAudioBrodcast
+	for {
+		if u.stopped {
+			return
+		}
+		// Read RTP packets being sent to Pion
+		rtp, err := u.audioInTrack.ReadRTP()
+		if err != nil {
+			log.Printf("Error: %s\n", err.Error())
+			return
+		}
+
+		if writeErr := u.audioOutTrack.WriteRTP(rtp); writeErr != nil {
+			panic(writeErr)
+		}
 	}
+}
+
+func (u *user) broadcastVideo() {
+	<-u.startVideoBrodcast
+	for {
+		if u.stopped {
+			return
+		}
+
+		// Read RTP packets being sent to Pion
+		rtp, err := u.videoInTrack.ReadRTP()
+		if err != nil {
+			log.Printf("Error: %s\n", err.Error())
+			return
+		}
+
+		if writeErr := u.videoOutTrack.WriteRTP(rtp); writeErr != nil {
+			panic(writeErr)
+		}
+	}
+}
+
+func (u *user) addSubscriber(subscriber *user) error {
 
 	u.subscribersMutex.Lock()
-	u.subscribers[subscriber.ID] = &subscriberTracks{
-		audioTrack: audioTrack,
-		videoTrack: videoTrack,
+	defer u.subscribersMutex.Unlock()
 
+	for {
+		// Wait until tracks are set.
+		if u.videoOutTrack != nil && u.audioOutTrack != nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
+	if _, subscribed := u.subscribers[subscriber.ID]; subscribed {
+		// Return if already subscribed
+		return nil
+	}
+
+	// Must add the tracks to the subscriber
+	audioRTPSender, err := subscriber.pc.AddTrack(u.audioOutTrack)
+	if err != nil {
+		log.Printf("Error: %s\n", err.Error())
+		return err
+	}
+
+	videoRTPSender, err := subscriber.pc.AddTrack(u.videoOutTrack)
+	if err != nil {
+		log.Printf("Error: %s\n", err.Error())
+		return err
+	}
+
+	u.subscribers[subscriber.ID] = &subscriberRTPSenders{
 		audioRTPSender: audioRTPSender,
 		videoRTPSender: videoRTPSender,
 	}
-	u.subscribersMutex.Unlock()
 
 	return nil
 }
 
 func (u *user) removeSubscriber(subscriber *user) error {
-	if !u.hasSubscriber(subscriber) {
-		// Can only remove if subscribed
-		return nil
-	}
-
 	u.subscribersMutex.Lock()
 	defer u.subscribersMutex.Unlock()
 
+	if _, subscribed := u.subscribers[subscriber.ID]; !subscribed {
+		// Can only remove if subscribed
+		return nil
+	}
 	theirs := u.subscribers[subscriber.ID]
 	if err := subscriber.pc.RemoveTrack(theirs.audioRTPSender); err != nil {
 		log.Printf("Error: %s\n", err.Error())
@@ -205,28 +213,9 @@ func (u *user) removeSubscriber(subscriber *user) error {
 		return err
 	}
 
-	mytracks := subscriber.subscribers[u.ID]
-	if err := u.pc.RemoveTrack(mytracks.audioRTPSender); err != nil {
-		log.Printf("Error: %s\n", err.Error())
-		return err
-	}
-	if err := u.pc.RemoveTrack(mytracks.videoRTPSender); err != nil {
-		log.Printf("Error: %s\n", err.Error())
-		return err
-
-	}
-
 	delete(u.subscribers, subscriber.ID)
 
 	return nil
-}
-
-func (u *user) hasSubscriber(subscriber *user) bool {
-	u.subscribersMutex.RLock()
-	defer u.subscribersMutex.RUnlock()
-	_, subscribed := u.subscribers[subscriber.ID]
-
-	return subscribed
 }
 
 func (u *user) showSubscribers() {
@@ -248,7 +237,7 @@ func newUser(u *user) *user {
 		StreamID: u.StreamID,
 
 		subscribersMutex: sync.RWMutex{},
-		subscribers:      map[string]*subscriberTracks{},
+		subscribers:      map[string]*subscriberRTPSenders{},
 
 		startVideoBrodcast: make(chan struct{}),
 		startAudioBrodcast: make(chan struct{}),
@@ -334,6 +323,9 @@ func (r *room) removeUser(conn *websocket.Conn) *user {
 			continue
 		}
 		if err := publisher.removeSubscriber(user); err != nil {
+			log.Print("Error: ", err.Error())
+		}
+		if err := user.removeSubscriber(publisher); err != nil {
 			log.Print("Error: ", err.Error())
 		}
 	}
