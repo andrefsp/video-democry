@@ -12,26 +12,20 @@ const (
 	mimeTypeVP9  = "video/vp9"
 )
 
-func getPublisherMediaEngine() (*webrtc.MediaEngine, error) {
-	me := &webrtc.MediaEngine{}
-	if err := me.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: mimeTypeOpus, ClockRate: 48000, Channels: 2, SDPFmtpLine: "minptime=10;useinbandfec=1", RTCPFeedback: nil},
-		PayloadType:        111,
-	}, webrtc.RTPCodecTypeAudio); err != nil {
-		return nil, err
-	}
+var videoRTCPFeedback = []webrtc.RTCPFeedback{{"goog-remb", ""}, {"ccm", "fir"}, {"nack", ""}, {"nack", "pli"}}
 
-	videoRTCPFeedback := []webrtc.RTCPFeedback{{"goog-remb", ""}, {"ccm", "fir"}, {"nack", ""}, {"nack", "pli"}}
-	for _, codec := range []webrtc.RTPCodecParameters{
-		{
-			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: mimeTypeVP8, ClockRate: 90000, RTCPFeedback: videoRTCPFeedback},
-			PayloadType:        96,
-		},
-		/*
-			{
-				RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: mimeTypeVP9, ClockRate: 90000, SDPFmtpLine: "profile-id=0", RTCPFeedback: videoRTCPFeedback},
-				PayloadType:        98,
-			},
+var videoRTPCodecs = []webrtc.RTPCodecParameters{
+	{
+		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: mimeTypeVP8, ClockRate: 90000, RTCPFeedback: videoRTCPFeedback},
+		PayloadType:        96,
+	},
+	{
+		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: mimeTypeVP9, ClockRate: 90000, SDPFmtpLine: "profile-id=0", RTCPFeedback: videoRTCPFeedback},
+		PayloadType:        98,
+	},
+
+	/*
+		Some codes do not work in mobile browsers.
 			{
 				RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: mimeTypeVP9, ClockRate: 90000, SDPFmtpLine: "profile-id=1", RTCPFeedback: videoRTCPFeedback},
 				PayloadType:        100,
@@ -57,8 +51,19 @@ func getPublisherMediaEngine() (*webrtc.MediaEngine, error) {
 				PayloadType:        123,
 			},
 
-		*/
-	} {
+	*/
+}
+
+func getPublisherMediaEngine() (*webrtc.MediaEngine, error) {
+	me := &webrtc.MediaEngine{}
+	if err := me.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: mimeTypeOpus, ClockRate: 48000, Channels: 2, SDPFmtpLine: "minptime=10;useinbandfec=1", RTCPFeedback: nil},
+		PayloadType:        111,
+	}, webrtc.RTPCodecTypeAudio); err != nil {
+		return nil, err
+	}
+
+	for _, codec := range videoRTPCodecs {
 		if err := me.RegisterCodec(codec, webrtc.RTPCodecTypeVideo); err != nil {
 			return nil, err
 		}

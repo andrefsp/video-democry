@@ -83,14 +83,7 @@ func (u *user) addVideoTrack(video *webrtc.TrackRemote) error {
 
 	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{
-			MimeType:  "video/vp8",
-			ClockRate: 90000,
-			RTCPFeedback: []webrtc.RTCPFeedback{
-				{"goog-remb", ""},
-				{"ccm", "fir"},
-				{"nack", ""},
-				{"nack", "pli"},
-			},
+			MimeType: "video/vp8",
 		},
 		"video",
 		u.StreamID,
