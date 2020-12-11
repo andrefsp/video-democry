@@ -85,7 +85,7 @@ func main() {
 
 	fullListenAddr := fmt.Sprintf("%s:%s", listenAddr, listenPort)
 
-	log.Printf("serving on '%s' sslMode: %t", fullListenAddr, sslMode)
+	log.Printf("hostname: '%s' serving on '%s' sslMode: %t", fullListenAddr, sslMode)
 	switch sslMode {
 	case true:
 		log.Println("Serving over https")
