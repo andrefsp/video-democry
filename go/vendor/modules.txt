@@ -100,6 +100,7 @@ github.com/pion/webrtc/v3/internal/mux
 github.com/pion/webrtc/v3/internal/util
 github.com/pion/webrtc/v3/pkg/media
 github.com/pion/webrtc/v3/pkg/media/ivfreader
+github.com/pion/webrtc/v3/pkg/media/ivfwriter
 github.com/pion/webrtc/v3/pkg/media/oggreader
 github.com/pion/webrtc/v3/pkg/rtcerr
 # github.com/pkg/errors v0.9.1

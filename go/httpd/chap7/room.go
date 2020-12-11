@@ -5,10 +5,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andrefsp/video-democry/go/config"
 	"github.com/gorilla/websocket"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
+
+	"github.com/andrefsp/video-democry/go/config"
 )
 
 type subscriberRTPSenders struct {
@@ -135,7 +136,7 @@ func (u *user) broadcastAudio() {
 		// Read RTP packets being sent to Pion
 		rtp, err := u.audioInTrack.ReadRTP()
 		if err != nil {
-			log.Printf("Error: %s\n", err.Error())
+			log.Printf("Error broadcasting audio: %s\n", err.Error())
 			return
 		}
 
@@ -155,10 +156,9 @@ func (u *user) broadcastVideo() {
 		// Read RTP packets being sent to Pion
 		rtp, err := u.videoInTrack.ReadRTP()
 		if err != nil {
-			log.Printf("Error: %s\n", err.Error())
+			log.Printf("Error broadcasting video: %s\n", err.Error())
 			return
 		}
-
 		if writeErr := u.videoOutTrack.WriteRTP(rtp); writeErr != nil {
 			panic(writeErr)
 		}
@@ -293,7 +293,7 @@ func (f *userFactory) newUser(u *user) (*user, error) {
 	go newUser.broadcastAudio()
 	go newUser.broadcastVideo()
 
-	go newUser.showSubscribers()
+	// go newUser.showSubscribers()
 
 	return newUser, nil
 }
