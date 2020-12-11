@@ -133,7 +133,7 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 	})
 
 	user.pc.OnTrack(func(t *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
-		log.Printf("Received `%s` track.\n", t.Kind().String())
+		log.Printf("Received `%s` `%s` track.\n", t.Kind().String(), t.Codec().MimeType)
 
 		// Handle stream subscriptions
 		defer r.handleStreamSubscriptions()

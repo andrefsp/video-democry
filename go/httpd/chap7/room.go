@@ -83,7 +83,7 @@ func (u *user) addVideoTrack(video *webrtc.TrackRemote) error {
 
 	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{
-			MimeType: "video/vp8",
+			MimeType: video.Codec().MimeType,
 		},
 		"video",
 		u.StreamID,
@@ -104,7 +104,9 @@ func (u *user) addAudioTrack(audio *webrtc.TrackRemote) error {
 	go u.sendPLI(audio)
 
 	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
-		webrtc.RTPCodecCapability{MimeType: "audio/opus"},
+		webrtc.RTPCodecCapability{
+			MimeType: audio.Codec().MimeType,
+		},
 		"audio",
 		u.StreamID,
 	)
