@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/andrefsp/video-democry/go/config"
 	"github.com/gorilla/websocket"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
@@ -80,7 +81,16 @@ func (u *user) addVideoTrack(video *webrtc.TrackRemote) error {
 	go u.sendPLI(video)
 
 	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
-		webrtc.RTPCodecCapability{MimeType: "video/vp8"},
+		webrtc.RTPCodecCapability{
+			MimeType:  "video/vp8",
+			ClockRate: 90000,
+			RTCPFeedback: []webrtc.RTCPFeedback{
+				{"goog-remb", ""},
+				{"ccm", "fir"},
+				{"nack", ""},
+				{"nack", "pli"},
+			},
+		},
 		"video",
 		u.StreamID,
 	)
@@ -230,12 +240,47 @@ func (u *user) showSubscribers() {
 	}
 }
 
-func newUser(u *user) *user {
+func (s *userFactory) newPeerConnection() (*webrtc.PeerConnection, error) {
+	me, err := getPublisherMediaEngine()
+	if err != nil {
+		return nil, err
+	}
+
+	return webrtc.NewAPI(webrtc.WithMediaEngine(me)).
+		//return webrtc.
+		NewPeerConnection(webrtc.Configuration{
+			//SDPSemantics:       webrtc.SDPSemanticsUnifiedPlanWithFallback,
+			ICETransportPolicy: webrtc.ICETransportPolicyRelay,
+			ICEServers: []webrtc.ICEServer{
+				{
+					URLs: []string{"stun:stun.l.google.com:19302"},
+				},
+				{
+					URLs:       []string{s.cfg.TurnServerAddr},
+					Credential: "thiskey",
+					Username:   "thisuser",
+				},
+			},
+		})
+}
+
+type userFactory struct {
+	cfg *config.Config
+}
+
+func (f *userFactory) newUser(u *user) (*user, error) {
+	pc, err := f.newPeerConnection()
+	if err != nil {
+		log.Print("Error creating Peer connection: ", err.Error())
+		return nil, err
+	}
+
 	newUser := &user{
 		ID:       u.ID,
 		Username: u.Username,
 		StreamID: u.StreamID,
 
+		pc:               pc,
 		subscribersMutex: sync.RWMutex{},
 		subscribers:      map[string]*subscriberRTPSenders{},
 
@@ -250,7 +295,7 @@ func newUser(u *user) *user {
 
 	go newUser.showSubscribers()
 
-	return newUser
+	return newUser, nil
 }
 
 type room struct {

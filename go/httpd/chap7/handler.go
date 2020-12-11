@@ -26,25 +26,8 @@ var messageMutex = sync.Mutex{}
 var rooms = sync.Map{}
 
 type chap7Handler struct {
-	cfg *config.Config
-}
-
-func (s *chap7Handler) newPeerConnection() (*webrtc.PeerConnection, error) {
-	return webrtc.
-		NewPeerConnection(webrtc.Configuration{
-			//SDPSemantics:       webrtc.SDPSemanticsUnifiedPlanWithFallback,
-			ICETransportPolicy: webrtc.ICETransportPolicyRelay,
-			ICEServers: []webrtc.ICEServer{
-				{
-					URLs: []string{"stun:stun.l.google.com:19302"},
-				},
-				{
-					URLs:       []string{s.cfg.TurnServerAddr},
-					Credential: "thiskey",
-					Username:   "thisuser",
-				},
-			},
-		})
+	userFactory *userFactory
+	cfg         *config.Config
 }
 
 func (s *chap7Handler) sendMessage(conn *websocket.Conn, payload interface{}) error {
@@ -194,13 +177,10 @@ func (s *chap7Handler) handleUserJoin(r *room, conn *websocket.Conn, payload []b
 		panic(err)
 	}
 
-	user := newUser(message.User)
-	pc, err := s.newPeerConnection()
+	user, err := s.userFactory.newUser(message.User)
 	if err != nil {
-		log.Print("Error creating Peer connection: ", err.Error())
 		panic(err)
 	}
-	user.pc = pc
 
 	r.addUser(conn, user)
 
@@ -291,6 +271,8 @@ func (s *chap7Handler) RegisterHandlers(m *mux.Router, middleware func(h http.Ha
 
 func New(cfg *config.Config) *chap7Handler {
 	return &chap7Handler{
-		cfg: cfg,
+		userFactory: &userFactory{
+			cfg: cfg,
+		},
 	}
 }

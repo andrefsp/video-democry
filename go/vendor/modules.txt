@@ -68,6 +68,7 @@ github.com/pion/sctp
 # github.com/pion/sdp/v2 v2.4.0
 ## explicit
 # github.com/pion/sdp/v3 v3.0.3
+## explicit
 github.com/pion/sdp/v3
 # github.com/pion/srtp v1.5.2
 github.com/pion/srtp
