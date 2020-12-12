@@ -161,6 +161,7 @@ func (u *user) broadcastVideo() {
 }
 
 func (u *user) addSubscriber(subscriber *user) error {
+	log.Printf("`%s` subscribing to `%s`", subscriber.ID, u.ID)
 
 	u.subscribersMutex.Lock()
 	defer u.subscribersMutex.Unlock()
@@ -190,7 +191,6 @@ func (u *user) addSubscriber(subscriber *user) error {
 		log.Printf("Error: %s\n", err.Error())
 		return err
 	}
-
 	u.subscribers[subscriber.ID] = &subscriberRTPSenders{
 		audioRTPSender: audioRTPSender,
 		videoRTPSender: videoRTPSender,

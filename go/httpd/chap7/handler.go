@@ -62,8 +62,13 @@ func (s *chap7Handler) handleICECandidate(r *room, conn *websocket.Conn, message
 	return nil
 }
 
-func (s *chap7Handler) sendAnswer(r *room, conn *websocket.Conn) error {
+func (s *chap7Handler) sendAnswer(r *room, conn *websocket.Conn, offer webrtc.SessionDescription) error {
 	user := r.getUser(conn)
+
+	if err := user.pc.SetRemoteDescription(offer); err != nil {
+		log.Print("Error: ", err.Error())
+		return err
+	}
 
 	// Answer and respond
 	answer, err := user.pc.CreateAnswer(nil)
@@ -83,6 +88,8 @@ func (s *chap7Handler) sendAnswer(r *room, conn *websocket.Conn) error {
 		Answer: answer,
 	})
 
+	log.Printf("Answer sent to user %s", user.ID)
+
 	return nil
 }
 
@@ -91,6 +98,7 @@ func (s *chap7Handler) handleAnswer(r *room, conn *websocket.Conn, messagePayloa
 
 	om := InAnswer{}
 	if err := json.Unmarshal(messagePayload, &om); err != nil {
+		log.Printf("Error: %s\n", err.Error())
 		return err
 	}
 
@@ -109,15 +117,11 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		return err
 	}
 
-	log.Printf("ConnectionState from user %s :: %s\n", user.ID, user.pc.ConnectionState())
+	log.Printf("Offer from user: %s ConnectionState: %s\n", user.ID, user.pc.ConnectionState())
 
 	if user.pc.ConnectionState() != webrtc.PeerConnectionStateNew {
 		// Just reset the Status
-		if err := user.pc.SetRemoteDescription(om.Offer); err != nil {
-			log.Print("Error: ", err.Error())
-			return err
-		}
-		return s.sendAnswer(r, conn)
+		return s.sendAnswer(r, conn, om.Offer)
 	}
 
 	user.pc.OnICECandidate(func(c *webrtc.ICECandidate) {
@@ -133,38 +137,40 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 	})
 
 	user.pc.OnTrack(func(t *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
-		log.Printf("Received `%s` `%s` track.\n", t.Kind().String(), t.Codec().MimeType)
+		log.Printf("Received track: `%s` mimetype: `%s`.\n", t.Kind().String(), t.Codec().MimeType)
 
 		// Handle stream subscriptions
 		defer r.handleStreamSubscriptions()
 
 		if t.Kind().String() == "video" {
-			//user.video = t
 			user.addVideoTrack(t)
 			return
 		}
 		if t.Kind().String() == "audio" {
-			//user.audio = t
 			user.addAudioTrack(t)
 			return
 		}
 	})
 
 	user.pc.OnNegotiationNeeded(func() {
-		log.Printf("Requesting ICE negotiation to %s \n", user.ID)
+		offer, err := user.pc.CreateOffer(nil)
+		if err != nil {
+			return
+		}
 
-		s.sendMessage(conn, &OutNegotiationNeeded{
-			Uri:    "out/negotiationneeded",
+		if err := user.pc.SetLocalDescription(offer); err != nil {
+			return
+		}
+
+		s.sendMessage(conn, &OutOffer{
+			Uri:    "out/offer",
 			ToUser: user,
+			Offer:  offer,
 		})
+		log.Printf("Requested ICE negotiation to %s \n", user.ID)
 	})
 
-	if err := user.pc.SetRemoteDescription(om.Offer); err != nil {
-		log.Print("Error: ", err.Error())
-		return err
-	}
-
-	s.sendAnswer(r, conn)
+	s.sendAnswer(r, conn, om.Offer)
 
 	return nil
 }
