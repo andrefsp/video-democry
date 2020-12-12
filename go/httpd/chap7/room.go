@@ -244,8 +244,8 @@ func (s *userFactory) newPeerConnection() (*webrtc.PeerConnection, error) {
 	return webrtc.NewAPI(webrtc.WithMediaEngine(me)).
 		//return webrtc.
 		NewPeerConnection(webrtc.Configuration{
-			//SDPSemantics:       webrtc.SDPSemanticsUnifiedPlanWithFallback,
-			ICETransportPolicy: webrtc.ICETransportPolicyRelay,
+			SDPSemantics: webrtc.SDPSemanticsUnifiedPlanWithFallback,
+			//ICETransportPolicy: webrtc.ICETransportPolicyRelay,
 			ICEServers: []webrtc.ICEServer{
 				{
 					URLs: []string{"stun:stun.l.google.com:19302"},

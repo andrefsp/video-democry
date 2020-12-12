@@ -1,19 +1,16 @@
-export function getRTCConfiguration(credential, username, servers) {
+export function getRTCConfiguration(credential, username, server) {
   return { 
-    //iceServers: [
-    //  {
-    //    urls: "stun:stun.l.google.com:19302",
-    //  }
-    //],
-    //sdpSemantics: 'unified-plan',
-    iceTransportPolicy: 'relay',
-    iceServers: servers.map(server => {
-      return {
-        urls: `${servers}`,
+    sdpSemantics: 'unified-plan',
+    //iceTransportPolicy: 'relay',
+    iceServers: [
+      {
+        urls: "stun:stun.l.google.com:19302",
+      },
+      {
+        urls: `${server}`,
         credential: credential,
         username: username,
       }
-    })
-
+    ],
   }
 };

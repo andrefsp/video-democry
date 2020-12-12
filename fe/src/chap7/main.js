@@ -137,7 +137,7 @@ async function startWS() {
 
 async function getRTCPeerConnection() {
   var rtcConf = getRTCConfiguration(
-    "thiskey", "thiskey", [`${stunTurnURL}`]
+    "thiskey", "thiskey", `${stunTurnURL}`
   );
   
   let conn = new RTCPeerConnection(rtcConf);
@@ -171,8 +171,6 @@ async function getRTCPeerConnection() {
       return;
     }
 
-    //console.log("Negotiation started: ", event);
-    //console.log("ICE connetion state:: ", conn.iceConnectionState);
     sendOffer();
   }
 
