@@ -96,6 +96,8 @@ async function setupLocalSession() {
   rtcConn = await getRTCPeerConnection();
 }
 
+async function handleError(payload) {}
+
 
 async function startWS() {
   ws = new WebSocket(`${wsURL}/chap7/ws?room=${room.id}`)
@@ -127,6 +129,8 @@ async function startWS() {
         return await handleNegotiationNeeded(payload)
       case "out/ping":
         return await handlePing(payload)
+      case "out/error":
+        return await handleError(payload)
       default:
         console.log("No handler for payload: ", payload)
         return

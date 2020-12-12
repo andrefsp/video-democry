@@ -21,18 +21,16 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-var messageMutex = sync.Mutex{}
-
 var rooms = sync.Map{}
 
 type chap7Handler struct {
 	userFactory *userFactory
-	cfg         *config.Config
 }
 
-func (s *chap7Handler) sendMessage(conn *websocket.Conn, payload interface{}) error {
-	messageMutex.Lock()
-	defer messageMutex.Unlock()
+func (s *chap7Handler) sendMessage(r *room, conn *websocket.Conn, payload interface{}) error {
+	// Make sure messages to the room are synchronized
+	r.messageMutex.Lock()
+	defer r.messageMutex.Unlock()
 
 	jData, err := json.Marshal(payload)
 	if err != nil {
@@ -82,7 +80,7 @@ func (s *chap7Handler) sendAnswer(r *room, conn *websocket.Conn, offer webrtc.Se
 		return err
 	}
 
-	s.sendMessage(conn, &OutAnswer{
+	s.sendMessage(r, conn, &OutAnswer{
 		Uri:    "out/answer",
 		ToUser: user, // We are answering to the same user.
 		Answer: answer,
@@ -129,7 +127,7 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 			return
 		}
 		log.Printf("Sending ICE candidate to %s\n", user.ID)
-		s.sendMessage(conn, &OutICECandidate{
+		s.sendMessage(r, conn, &OutICECandidate{
 			Uri:       "out/icecandidate",
 			ToUser:    user,
 			Candidate: c.ToJSON(),
@@ -162,7 +160,7 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 			return
 		}
 
-		s.sendMessage(conn, &OutOffer{
+		s.sendMessage(r, conn, &OutOffer{
 			Uri:    "out/offer",
 			ToUser: user,
 			Offer:  offer,
@@ -170,12 +168,10 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		log.Printf("Requested ICE negotiation to %s \n", user.ID)
 	})
 
-	s.sendAnswer(r, conn, om.Offer)
-
-	return nil
+	return s.sendAnswer(r, conn, om.Offer)
 }
 
-func (s *chap7Handler) handleUserJoin(r *room, conn *websocket.Conn, payload []byte) {
+func (s *chap7Handler) handleUserJoin(r *room, conn *websocket.Conn, payload []byte) error {
 	eventURI := "out/user-join"
 
 	message := InUserJoinMessage{}
@@ -188,15 +184,21 @@ func (s *chap7Handler) handleUserJoin(r *room, conn *websocket.Conn, payload []b
 		panic(err)
 	}
 
-	r.addUser(conn, user)
+	if _, err = r.addUser(conn, user); err != nil {
+		return s.sendMessage(r, conn, &InfoMessage{
+			Uri:     "out/error",
+			Message: err.Error(),
+		})
+	}
 
 	for uconn := range r.users {
-		s.sendMessage(uconn, &OutUserEventMessage{
+		s.sendMessage(r, uconn, &OutUserEventMessage{
 			Uri:   eventURI,
 			User:  message.User,
 			Users: r.getUserList(),
 		})
 	}
+	return nil
 }
 
 func (s *chap7Handler) handleDisconnection(r *room, conn *websocket.Conn) {
@@ -205,7 +207,7 @@ func (s *chap7Handler) handleDisconnection(r *room, conn *websocket.Conn) {
 	user := r.removeUser(conn)
 
 	for uconn := range r.users {
-		s.sendMessage(uconn, &OutUserEventMessage{
+		s.sendMessage(r, uconn, &OutUserEventMessage{
 			Uri:   eventURI,
 			User:  user,
 			Users: r.getUserList(),
@@ -246,8 +248,9 @@ func (s *chap7Handler) handleConnection(roomID string, conn *websocket.Conn) {
 			s.handleAnswer(room, conn, messagePayload)
 		case "in/pong":
 		default:
-			s.sendMessage(conn, &InfoMessage{
-				Uri: "out/error", Message: "Message uri not recognized",
+			s.sendMessage(room, conn, &InfoMessage{
+				Uri:     "out/error",
+				Message: "Message uri not recognized",
 			})
 			log.Println("No handler for message type: ", m.Uri)
 		}
