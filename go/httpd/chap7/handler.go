@@ -55,7 +55,7 @@ func (s *chap7Handler) handleICECandidate(r *room, conn *websocket.Conn, message
 		log.Printf("Error adding ICECandidate(%s): (%+v)\n", err.Error(), cm.Candidate)
 		return err
 	}
-	log.Println("Added ICECandidate")
+	//log.Printf("Added ICECandidate from user `%s`", user.ID)
 
 	return nil
 }
@@ -115,7 +115,7 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		return err
 	}
 
-	log.Printf("Offer from user: %s ConnectionState: %s\n", user.ID, user.pc.ConnectionState())
+	log.Printf("Offer from user `%s` ConnectionState: `%s`", user.ID, user.pc.ConnectionState())
 
 	if user.pc.ConnectionState() != webrtc.PeerConnectionStateNew {
 		// Just reset the Status
@@ -126,12 +126,27 @@ func (s *chap7Handler) handleOffer(r *room, conn *websocket.Conn, messagePayload
 		if c == nil {
 			return
 		}
-		log.Printf("Sending ICE candidate to %s\n", user.ID)
+		//log.Printf("Sending ICE candidate to `%s`", user.ID)
 		s.sendMessage(r, conn, &OutICECandidate{
 			Uri:       "out/icecandidate",
 			ToUser:    user,
 			Candidate: c.ToJSON(),
 		})
+	})
+
+	user.pc.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+		switch s {
+		case webrtc.ICEConnectionStateFailed:
+			fallthrough
+		case webrtc.ICEConnectionStateConnected:
+			fallthrough
+		case webrtc.ICEConnectionStateCompleted:
+			fallthrough
+		case webrtc.ICEConnectionStateClosed:
+			fallthrough
+		case webrtc.ICEConnectionStateDisconnected:
+			log.Printf("ICE state `%s` with user `%s`", s.String(), user.ID)
+		}
 	})
 
 	user.pc.OnTrack(func(t *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {

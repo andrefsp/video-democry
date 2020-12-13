@@ -75,7 +75,7 @@ github.com/pion/srtp
 # github.com/pion/stun v0.3.5
 github.com/pion/stun
 github.com/pion/stun/internal/hmac
-# github.com/pion/transport v0.11.1
+# github.com/pion/transport v0.12.0
 ## explicit
 github.com/pion/transport/deadline
 github.com/pion/transport/packetio

@@ -20,6 +20,7 @@ let user;                           // current user
 let ws;                             // websocket connection
 let stream;                         // local stream
 let rtcConn;
+let dataChan;
 
 let tracks = new Array();
 
@@ -95,6 +96,7 @@ async function setupLocalSession() {
 
   rtcConn = await getRTCPeerConnection();
 }
+
 
 async function handleError(payload) {}
 
@@ -201,7 +203,7 @@ async function handleICECandidate(payload) {
   try {
     await rtcConn.addIceCandidate(new RTCIceCandidate(payload.candidate));
   } catch (e) {
-    console.log("Error adding ice candidate. ", e);
+    console.log("Error adding ice candidate. ", e, payload);
     return
   }
 }
