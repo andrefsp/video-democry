@@ -20,9 +20,6 @@ let user;                           // current user
 let ws;                             // websocket connection
 let stream;                         // local stream
 let rtcConn;
-let dataChan;
-
-let tracks = new Array();
 
 function setJoinControls(state) {
     switch(state) {

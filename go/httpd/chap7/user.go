@@ -160,7 +160,7 @@ func (u *user) broadcastVideo() {
 }
 
 func (u *user) addSubscriber(subscriber *user) error {
-	log.Printf("`%s` subscribing to `%s`", subscriber.ID, u.ID)
+	defer log.Printf("`%s` subscribed to `%s`", subscriber.ID, u.ID)
 
 	u.subscribersMutex.Lock()
 	defer u.subscribersMutex.Unlock()
@@ -199,6 +199,8 @@ func (u *user) addSubscriber(subscriber *user) error {
 }
 
 func (u *user) removeSubscriber(subscriber *user) error {
+	defer log.Printf("`%s` unsubscribed to `%s`", subscriber.ID, u.ID)
+
 	u.subscribersMutex.Lock()
 	defer u.subscribersMutex.Unlock()
 
