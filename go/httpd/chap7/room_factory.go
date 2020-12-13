@@ -5,7 +5,13 @@ import (
 	"sync"
 
 	"github.com/andrefsp/video-democry/go/config"
+	"github.com/gorilla/websocket"
 )
+
+type eventSubscription struct {
+	roomCreated chan *room
+	roomDeleted chan *room
+}
 
 // Room factory manages room creations
 type roomFactory struct {
@@ -13,6 +19,32 @@ type roomFactory struct {
 
 	roomsMutex sync.RWMutex
 	rooms      map[string]*room
+
+	eventSubscriptionsMutext sync.Mutex
+	eventSubscriptions       map[*websocket.Conn]*eventSubscription
+}
+
+func (f *roomFactory) notify(r *room, action string) {
+	for _, subscription := range f.eventSubscriptions {
+		switch action {
+		case "deleted":
+			subscription.roomDeleted <- r
+		case "created":
+			subscription.roomCreated <- r
+		}
+	}
+}
+
+func (f *roomFactory) subscribe(conn *websocket.Conn) *eventSubscription {
+	f.eventSubscriptionsMutext.Lock()
+	defer f.eventSubscriptionsMutext.Unlock()
+
+	f.eventSubscriptions[conn] = &eventSubscription{
+		roomCreated: make(chan *room),
+		roomDeleted: make(chan *room),
+	}
+
+	return f.eventSubscriptions[conn]
 }
 
 func (f *roomFactory) deleteIfEmpty(r *room) bool {
@@ -21,6 +53,7 @@ func (f *roomFactory) deleteIfEmpty(r *room) bool {
 
 	if len(r.getUserList()) < 1 {
 		delete(f.rooms, r.ID)
+		defer f.notify(f.rooms[r.ID], "deleted")
 		return true
 	}
 
@@ -39,6 +72,8 @@ func (f *roomFactory) getOrCreate(id string) *room {
 
 	f.rooms[id] = newRoom(id)
 	f.rooms[id].start()
+
+	defer f.notify(f.rooms[id], "created")
 
 	return f.rooms[id]
 }
@@ -62,7 +97,8 @@ func newRoomFactory(cfg *config.Config) *roomFactory {
 	return &roomFactory{
 		cfg: cfg,
 
-		rooms: map[string]*room{},
+		rooms:              map[string]*room{},
+		eventSubscriptions: map[*websocket.Conn]*eventSubscription{},
 	}
 
 }

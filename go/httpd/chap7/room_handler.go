@@ -189,7 +189,7 @@ func (s *chap7Handler) handleUserJoin(r *room, conn *websocket.Conn, payload []b
 	return nil
 }
 
-func (s *chap7Handler) handleDisconnection(r *room, conn *websocket.Conn) {
+func (s *chap7Handler) handleRoomDisconnection(r *room, conn *websocket.Conn) {
 	eventURI := "out/user-left"
 
 	user := r.removeUser(conn)
@@ -213,7 +213,7 @@ func (s *chap7Handler) handleRoomConnection(roomID string, conn *websocket.Conn)
 		_, messagePayload, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("read err:", err)
-			s.handleDisconnection(room, conn)
+			s.handleRoomDisconnection(room, conn)
 			break
 		}
 
