@@ -14,6 +14,7 @@ const MaxRoomSize = 2
 var ErrMaxUsersPerRoom = errors.New("Maximum users in room")
 
 type room struct {
+	ID           string `json:"id"`
 	messageMutex sync.Mutex
 
 	usersMutex sync.RWMutex
@@ -107,6 +108,17 @@ func (r *room) removeUser(conn *websocket.Conn) *user {
 	return user
 }
 
+func (r *room) getUserConnections() []*websocket.Conn {
+	r.usersMutex.RLock()
+	defer r.usersMutex.RUnlock()
+
+	conns := []*websocket.Conn{}
+	for conn := range r.users {
+		conns = append(conns, conn)
+	}
+	return conns
+}
+
 func (r *room) getUserList() []*user {
 	r.usersMutex.RLock()
 	defer r.usersMutex.RUnlock()
@@ -118,11 +130,11 @@ func (r *room) getUserList() []*user {
 	return users
 }
 
-func newRoom() *room {
-	r := &room{
+func newRoom(id string) *room {
+	return &room{
+		ID:       id,
 		users:    map[*websocket.Conn]*user{},
 		ticker:   time.NewTicker(15 * time.Second).C,
 		stopChan: make(chan struct{}, 1),
 	}
-	return r
 }

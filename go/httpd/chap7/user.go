@@ -293,3 +293,9 @@ func (f *userFactory) newUser(u *user) (*user, error) {
 
 	return newUser, nil
 }
+
+func newUserFactory(cfg *config.Config) *userFactory {
+	return &userFactory{
+		cfg: cfg,
+	}
+}
