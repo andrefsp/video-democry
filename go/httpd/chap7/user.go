@@ -27,10 +27,12 @@ type user struct {
 
 	pc *webrtc.PeerConnection
 
-	audioInTrack *webrtc.TrackRemote
-	videoInTrack *webrtc.TrackRemote
-
+	audioMutex    sync.Mutex
+	audioInTrack  *webrtc.TrackRemote
 	audioOutTrack *webrtc.TrackLocalStaticRTP
+
+	videoMutex    sync.Mutex
+	videoInTrack  *webrtc.TrackRemote
 	videoOutTrack *webrtc.TrackLocalStaticRTP
 
 	startVideoBrodcast chan struct{}
@@ -78,6 +80,13 @@ func (u *user) sendPLI(t *webrtc.TrackRemote) {
 }
 
 func (u *user) addVideoTrack(video *webrtc.TrackRemote) error {
+	u.videoMutex.Lock()
+	defer u.videoMutex.Unlock()
+
+	if u.videoInTrack != nil && u.videoOutTrack != nil {
+		return nil
+	}
+
 	go u.sendPLI(video)
 
 	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
@@ -100,6 +109,13 @@ func (u *user) addVideoTrack(video *webrtc.TrackRemote) error {
 }
 
 func (u *user) addAudioTrack(audio *webrtc.TrackRemote) error {
+	u.audioMutex.Lock()
+	defer u.audioMutex.Unlock()
+
+	if u.audioInTrack != nil && u.audioOutTrack != nil {
+		return nil
+	}
+
 	go u.sendPLI(audio)
 
 	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
