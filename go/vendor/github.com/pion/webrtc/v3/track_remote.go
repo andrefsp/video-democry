@@ -4,7 +4,9 @@ package webrtc
 
 import (
 	"sync"
+	"time"
 
+	"github.com/pion/interceptor"
 	"github.com/pion/rtp"
 )
 
@@ -19,10 +21,21 @@ type TrackRemote struct {
 	kind        RTPCodecType
 	ssrc        SSRC
 	codec       RTPCodecParameters
+	params      RTPParameters
 	rid         string
 
-	receiver *RTPReceiver
-	peeked   []byte
+	receiver         *RTPReceiver
+	peeked           []byte
+	peekedAttributes interceptor.Attributes
+}
+
+func newTrackRemote(kind RTPCodecType, ssrc SSRC, rid string, receiver *RTPReceiver) *TrackRemote {
+	return &TrackRemote{
+		kind:     kind,
+		ssrc:     ssrc,
+		rid:      rid,
+		receiver: receiver,
+	}
 }
 
 // ID is the unique identifier for this Track. This should be unique for the
@@ -85,7 +98,7 @@ func (t *TrackRemote) Codec() RTPCodecParameters {
 }
 
 // Read reads data from the track.
-func (t *TrackRemote) Read(b []byte) (n int, err error) {
+func (t *TrackRemote) Read(b []byte) (n int, attributes interceptor.Attributes, err error) {
 	t.mu.RLock()
 	r := t.receiver
 	peeked := t.peeked != nil
@@ -94,7 +107,10 @@ func (t *TrackRemote) Read(b []byte) (n int, err error) {
 	if peeked {
 		t.mu.Lock()
 		data := t.peeked
+		attributes = t.peekedAttributes
+
 		t.peeked = nil
+		t.peekedAttributes = nil
 		t.mu.Unlock()
 		// someone else may have stolen our packet when we
 		// released the lock.  Deal with it.
@@ -107,44 +123,26 @@ func (t *TrackRemote) Read(b []byte) (n int, err error) {
 	return r.readRTP(b, t)
 }
 
-// peek is like Read, but it doesn't discard the packet read
-func (t *TrackRemote) peek(b []byte) (n int, err error) {
-	n, err = t.Read(b)
-	if err != nil {
-		return
-	}
-
-	t.mu.Lock()
-	// this might overwrite data if somebody peeked between the Read
-	// and us getting the lock.  Oh well, we'll just drop a packet in
-	// that case.
-	data := make([]byte, n)
-	n = copy(data, b[:n])
-	t.peeked = data
-	t.mu.Unlock()
-	return
-}
-
-// ReadRTP is a convenience method that wraps Read and unmarshals for you
-func (t *TrackRemote) ReadRTP() (*rtp.Packet, error) {
+// ReadRTP is a convenience method that wraps Read and unmarshals for you.
+func (t *TrackRemote) ReadRTP() (*rtp.Packet, interceptor.Attributes, error) {
 	b := make([]byte, receiveMTU)
-	i, err := t.Read(b)
+	i, attributes, err := t.Read(b)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	r := &rtp.Packet{}
 	if err := r.Unmarshal(b[:i]); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return r, nil
+	return r, attributes, nil
 }
 
 // determinePayloadType blocks and reads a single packet to determine the PayloadType for this Track
 // this is useful because we can't announce it to the user until we know the payloadType
 func (t *TrackRemote) determinePayloadType() error {
 	b := make([]byte, receiveMTU)
-	n, err := t.peek(b)
+	n, _, err := t.peek(b)
 	if err != nil {
 		return err
 	}
@@ -158,4 +156,28 @@ func (t *TrackRemote) determinePayloadType() error {
 	defer t.mu.Unlock()
 
 	return nil
+}
+
+// peek is like Read, but it doesn't discard the packet read
+func (t *TrackRemote) peek(b []byte) (n int, a interceptor.Attributes, err error) {
+	n, a, err = t.Read(b)
+	if err != nil {
+		return
+	}
+
+	t.mu.Lock()
+	// this might overwrite data if somebody peeked between the Read
+	// and us getting the lock.  Oh well, we'll just drop a packet in
+	// that case.
+	data := make([]byte, n)
+	n = copy(data, b[:n])
+	t.peeked = data
+	t.peekedAttributes = a
+	t.mu.Unlock()
+	return
+}
+
+// SetReadDeadline sets the max amount of time the RTP stream will block before returning. 0 is forever.
+func (t *TrackRemote) SetReadDeadline(deadline time.Time) error {
+	return t.receiver.setRTPReadDeadline(deadline, t)
 }
