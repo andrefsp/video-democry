@@ -216,8 +216,8 @@ func addDataMediaSection(d *sdp.SessionDescription, shouldAddCandidates bool, dt
 		MediaName: sdp.MediaName{
 			Media:   mediaSectionApplication,
 			Port:    sdp.RangedPort{Value: 9},
-			Protos:  []string{"DTLS", "SCTP"},
-			Formats: []string{"5000"},
+			Protos:  []string{"UDP", "DTLS", "SCTP"},
+			Formats: []string{"webrtc-datachannel"},
 		},
 		ConnectionInformation: &sdp.ConnectionInformation{
 			NetworkType: "IN",
@@ -230,7 +230,7 @@ func addDataMediaSection(d *sdp.SessionDescription, shouldAddCandidates bool, dt
 		WithValueAttribute(sdp.AttrKeyConnectionSetup, dtlsRole.String()).
 		WithValueAttribute(sdp.AttrKeyMID, midValue).
 		WithPropertyAttribute(RTPTransceiverDirectionSendrecv.String()).
-		WithPropertyAttribute("sctpmap:5000 webrtc-datachannel 1024").
+		WithPropertyAttribute("sctp-port:5000").
 		WithICECredentials(iceParams.UsernameFragment, iceParams.Password)
 
 	for _, f := range dtlsFingerprints {
@@ -313,12 +313,21 @@ func addTransceiverSDP(d *sdp.SessionDescription, isPlanB, shouldAddCandidates b
 		return false, nil
 	}
 
-	for id, rtpExtension := range mediaEngine.negotiatedHeaderExtensionsForType(t.kind) {
-		extURL, err := url.Parse(rtpExtension.uri)
+	directions := []RTPTransceiverDirection{}
+	if t.Sender() != nil {
+		directions = append(directions, RTPTransceiverDirectionSendonly)
+	}
+	if t.Receiver() != nil {
+		directions = append(directions, RTPTransceiverDirectionRecvonly)
+	}
+
+	parameters := mediaEngine.getRTPParametersByKind(t.kind, directions)
+	for _, rtpExtension := range parameters.HeaderExtensions {
+		extURL, err := url.Parse(rtpExtension.URI)
 		if err != nil {
 			return false, err
 		}
-		media.WithExtMap(sdp.ExtMap{Value: id, URI: extURL})
+		media.WithExtMap(sdp.ExtMap{Value: rtpExtension.ID, URI: extURL})
 	}
 
 	if len(mediaSection.ridMap) > 0 {

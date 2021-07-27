@@ -57,6 +57,14 @@ type RTPHeaderExtensionCapability struct {
 	URI string
 }
 
+// RTPHeaderExtensionParameter represents a negotiated RFC5285 RTP header extension.
+//
+// https://w3c.github.io/webrtc-pc/#dictionary-rtcrtpheaderextensionparameters-members
+type RTPHeaderExtensionParameter struct {
+	URI string
+	ID  int
+}
+
 // RTPCodecParameters is a sequence containing the media codecs that an RtpSender
 // will choose from, as well as entries for RTX, RED and FEC mechanisms. This also
 // includes the PayloadType that has been negotiated
@@ -69,31 +77,42 @@ type RTPCodecParameters struct {
 	statsID string
 }
 
-// RTCRtpCapabilities is a list of supported codecs and header extensions
+// RTPParameters is a list of negotiated codecs and header extensions
 //
-// https://w3c.github.io/webrtc-pc/#rtcrtpcapabilities
-type RTCRtpCapabilities struct {
-	HeaderExtensions []RTPHeaderExtensionCapability
-	Codecs           []RTPCodecCapability
+// https://w3c.github.io/webrtc-pc/#dictionary-rtcrtpparameters-members
+type RTPParameters struct {
+	HeaderExtensions []RTPHeaderExtensionParameter
+	Codecs           []RTPCodecParameters
 }
+
+type codecMatchType int
+
+const (
+	codecMatchNone    codecMatchType = 0
+	codecMatchPartial codecMatchType = 1
+	codecMatchExact   codecMatchType = 2
+)
 
 // Do a fuzzy find for a codec in the list of codecs
 // Used for lookup up a codec in an existing list to find a match
-func codecParametersFuzzySearch(needle RTPCodecParameters, haystack []RTPCodecParameters) (RTPCodecParameters, error) {
+// Returns codecMatchExact, codecMatchPartial, or codecMatchNone
+func codecParametersFuzzySearch(needle RTPCodecParameters, haystack []RTPCodecParameters) (RTPCodecParameters, codecMatchType) {
 	// First attempt to match on MimeType + SDPFmtpLine
+	// Exact matches means fmtp line cannot be empty
 	for _, c := range haystack {
 		if strings.EqualFold(c.RTPCodecCapability.MimeType, needle.RTPCodecCapability.MimeType) &&
 			c.RTPCodecCapability.SDPFmtpLine == needle.RTPCodecCapability.SDPFmtpLine {
-			return c, nil
+			return c, codecMatchExact
 		}
 	}
 
-	// Fallback to just MimeType
+	// Fallback to just MimeType if either haystack or needle does not have fmtpline set
 	for _, c := range haystack {
-		if strings.EqualFold(c.RTPCodecCapability.MimeType, needle.RTPCodecCapability.MimeType) {
-			return c, nil
+		if strings.EqualFold(c.RTPCodecCapability.MimeType, needle.RTPCodecCapability.MimeType) &&
+			(c.RTPCodecCapability.SDPFmtpLine == "" || needle.RTPCodecCapability.SDPFmtpLine == "") {
+			return c, codecMatchPartial
 		}
 	}
 
-	return RTPCodecParameters{}, ErrCodecNotFound
+	return RTPCodecParameters{}, codecMatchNone
 }
